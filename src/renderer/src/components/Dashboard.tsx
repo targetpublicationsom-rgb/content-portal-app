@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import UploadForm from './UploadForm'
 
 interface Job {
   id: string
@@ -13,6 +14,7 @@ interface Job {
 export default function Dashboard(): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [showUpload, setShowUpload] = useState(false)
 
   useEffect(() => {
     fetchJobs()
@@ -56,7 +58,7 @@ export default function Dashboard(): React.JSX.Element {
       {/* Header */}
       <div className="flex w-full items-center justify-between border-b p-4 bg-card">
         <h1 className="text-2xl font-bold">Job Dashboard</h1>
-        <Button onClick={handleUpload}>Upload</Button>
+        <Button onClick={() => setShowUpload(true)}>Upload</Button>
       </div>
 
       {/* Main Content - centered 80% */}
@@ -102,6 +104,7 @@ export default function Dashboard(): React.JSX.Element {
           </Table>
         </div>
       </div>
+      <UploadForm open={showUpload} onClose={() => setShowUpload(false)} />
     </div>
   )
 }
