@@ -1,9 +1,11 @@
-import { ServerStatus } from './components/ServerStatus'
+import Dashboard from './components/Dashboard'
+import StatusBar from './components/StatusBar'
 
 function App(): React.JSX.Element {
   return (
-    <div className="min-h-screen bg-gray-100">
-      <ServerStatus />
+    <div className="min-h-screen bg-background">
+      <Dashboard />
+      <StatusBar />
     </div>
   )
 }
