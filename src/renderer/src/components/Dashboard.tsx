@@ -52,16 +52,16 @@ export default function Dashboard(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-screen flex-col pb-12">
+    <div className="flex-1 flex flex-col pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between border-b p-4">
+      <div className="flex w-full items-center justify-between border-b p-4 bg-card">
         <h1 className="text-2xl font-bold">Job Dashboard</h1>
         <Button onClick={handleUpload}>Upload</Button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="rounded-lg border bg-card">
+      {/* Main Content - centered 80% */}
+      <div className="flex-1 flex justify-center overflow-auto p-4">
+        <div className="w-4/5 h-full rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
