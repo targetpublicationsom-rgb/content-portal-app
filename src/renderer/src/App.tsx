@@ -1,12 +1,10 @@
-import { Button } from "./components/ui/button"
+import { ServerStatus } from './components/ServerStatus'
 
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
-
   return (
-    <>
-      <Button onClick={ipcHandle}>Ping Main Process</Button>
-    </>
+    <div className="min-h-screen bg-gray-100">
+      <ServerStatus />
+    </div>
   )
 }
 

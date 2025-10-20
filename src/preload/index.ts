@@ -1,8 +1,17 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
-const api = {}
+const api = {
+  // Get the path to server-info.json
+  getServerInfoPath: (): Promise<string> => ipcRenderer.invoke('get-server-info-path'),
+
+  // Get current server info from memory
+  getServerInfo: (): Promise<{ port: number } | null> => ipcRenderer.invoke('get-server-info'),
+
+  // Check if server is running
+  isServerRunning: (): Promise<boolean> => ipcRenderer.invoke('is-server-running')
+}
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
