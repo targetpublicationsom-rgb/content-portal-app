@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
-import { cn } from '../lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import api from '../lib/axios'
 
 interface UploadFormProps {
   open: boolean
@@ -30,21 +30,18 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
   const [board, setBoard] = useState<string>('')
   const [medium, setMedium] = useState<string>('')
   const [standard, setStandard] = useState<string>('')
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([])
+  const [subject, setSubject] = useState<string>('')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
-
-  const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
-
   useEffect(() => {
     if (!open) return
 
     const loadInitial = async (): Promise<void> => {
       try {
         setStreamsLoading(true)
-        const res1 = await fetch(`${apiBase}/streams`)
-        if (res1.ok) setStreams(await res1.json())
+        const { data: streamsData } = await api.get('/streams')
+        setStreams(streamsData?.data)
       } catch (e) {
         console.error('fetchStreams', e)
       } finally {
@@ -53,8 +50,8 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
 
       try {
         setBoardsLoading(true)
-        const res2 = await fetch(`${apiBase}/boards`)
-        if (res2.ok) setBoards(await res2.json())
+        const { data: boardsData } = await api.get('/boards')
+        setBoards(boardsData?.data)
       } catch (e) {
         console.error('fetchBoards', e)
       } finally {
@@ -63,8 +60,8 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
 
       try {
         setMediumsLoading(true)
-        const res3 = await fetch(`${apiBase}/mediums`)
-        if (res3.ok) setMediums(await res3.json())
+        const { data: mediumsData } = await api.get('/mediums')
+        setMediums(mediumsData?.data)
       } catch (e) {
         console.error('fetchMediums', e)
       } finally {
@@ -73,43 +70,42 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
     }
 
     loadInitial()
-  }, [open, apiBase])
+  }, [open])
 
-  const fetchStandards = React.useCallback(
-    async (streamId: string, mediumId: string): Promise<void> => {
-      try {
-        setStandardsLoading(true)
-        const res = await fetch(`${apiBase}/standards?stream=${streamId}&medium=${mediumId}`)
-        if (res.ok) setStandards(await res.json())
-      } catch (e) {
-        console.error('fetchStandards', e)
-        setError('Failed to load standards')
-      } finally {
-        setStandardsLoading(false)
-      }
-    },
-    [apiBase]
-  )
+  const fetchStandards = React.useCallback(async (): Promise<void> => {
+    try {
+      setStandardsLoading(true)
+      const { data: standardsData } = await api.get('/standards', {
+        params: { stream_id: stream, medium_id: medium, board_id: board }
+      })
 
-  const fetchSubjects = React.useCallback(
-    async (standardId: string): Promise<void> => {
-      try {
-        setSubjectsLoading(true)
-        const res = await fetch(`${apiBase}/subjects?standard=${standardId}`)
-        if (res.ok) setSubjects(await res.json())
-      } catch (e) {
-        console.error('fetchSubjects', e)
-        setError('Failed to load subjects')
-      } finally {
-        setSubjectsLoading(false)
-      }
-    },
-    [apiBase]
-  )
+      setStandards(standardsData?.data)
+    } catch (e) {
+      console.error('fetchStandards', e)
+      setError('Failed to load standards')
+    } finally {
+      setStandardsLoading(false)
+    }
+  }, [board, medium, stream])
+
+  const fetchSubjects = React.useCallback(async (): Promise<void> => {
+    try {
+      setSubjectsLoading(true)
+      const { data: subjectsData } = await api.get('/subjects', {
+        params: { standard_metadata_id: standard }
+      })
+      setSubjects(subjectsData?.data)
+    } catch (e) {
+      console.error('fetchSubjects', e)
+      setError('Failed to load subjects')
+    } finally {
+      setSubjectsLoading(false)
+    }
+  }, [standard])
 
   useEffect(() => {
     if (stream && medium) {
-      fetchStandards(stream, medium)
+      fetchStandards()
     } else {
       setStandards([])
       setStandard('')
@@ -118,10 +114,10 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
 
   useEffect(() => {
     if (standard) {
-      fetchSubjects(standard)
+      fetchSubjects()
     } else {
       setSubjects([])
-      setSelectedSubjects([])
+      setSubject('')
     }
   }, [standard, fetchSubjects])
 
@@ -130,7 +126,7 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
     setBoard('')
     setMedium('')
     setStandard('')
-    setSelectedSubjects([])
+    setSubject('')
     setError('')
   }
 
@@ -155,27 +151,17 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
       setLoading(false)
       return
     }
-    if (selectedSubjects.length === 0) {
-      setError('Please select at least one subject')
+    if (!subject) {
+      setError('Please select a subject')
       setLoading(false)
       return
     }
 
     try {
-      const payload = { stream, board, medium, standard, subjects: selectedSubjects }
-      const res = await fetch(`${apiBase}/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-
-      if (res.ok) {
-        resetForm()
-        onClose()
-      } else {
-        const data = await res.json()
-        setError(data.message || 'Upload failed. Please try again.')
-      }
+      const payload = { stream, board, medium, standard, subject }
+      await api.post('/upload', payload)
+      resetForm()
+      onClose()
     } catch (e) {
       console.error('submit', e)
       setError('Network error. Please check your connection and try again.')
@@ -276,14 +262,10 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                   </Select>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium text-muted-foreground">Subjects *</span>
+                  <span className="text-sm font-medium text-muted-foreground">Subject *</span>
                   <Select
-                    value={selectedSubjects[0] || ''}
-                    onValueChange={(value) => {
-                      setSelectedSubjects((prev) =>
-                        prev.includes(value) ? prev.filter((p) => p !== value) : [...prev, value]
-                      )
-                    }}
+                    value={subject}
+                    onValueChange={setSubject}
                     disabled={subjectsLoading || !standard}
                   >
                     <SelectTrigger className="mt-2 w-full">
@@ -295,53 +277,18 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                               ? 'Select standard first'
                               : subjects.length === 0
                                 ? 'No subjects available'
-                                : selectedSubjects.length === 0
-                                  ? 'Select subjects'
-                                  : `${selectedSubjects.length} subject(s) selected`
+                                : 'Select subject'
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
                       {subjects.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={cn(
-                                'w-2 h-2 rounded-full',
-                                selectedSubjects.includes(s.id) ? 'bg-primary' : 'bg-muted'
-                              )}
-                            />
-                            {s.name}
-                          </div>
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {selectedSubjects.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedSubjects.map((subjectId) => {
-                        const subject = subjects.find((s) => s.id === subjectId)
-                        if (!subject) return null
-                        return (
-                          <div
-                            key={subject.id}
-                            className="flex items-center gap-1 rounded-md border px-2 py-1 text-sm"
-                          >
-                            {subject.name}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedSubjects((prev) => prev.filter((p) => p !== subject.id))
-                              }
-                              className="ml-1 text-muted-foreground hover:text-foreground"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
