@@ -3,9 +3,6 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  // Get the path to server-info.json
-  getServerInfoPath: (): Promise<string> => ipcRenderer.invoke('get-server-info-path'),
-
   // Get current server info from memory
   getServerInfo: (): Promise<{ port: number } | null> => ipcRenderer.invoke('get-server-info'),
 
