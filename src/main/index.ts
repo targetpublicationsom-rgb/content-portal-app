@@ -3,6 +3,8 @@ import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import fs from 'fs'
+import path from 'path'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -188,15 +190,31 @@ app.on('before-quit', async (event) => {
     console.log('[Main] Python server stopped')
     app.quit()
   }
-});
+})
+
+ipcMain.handle('get-server-info', () => {
+  try {
+    // Get the AppData/Roaming path (cross-platform safe)
+    const appDataDir = app.getPath('appData') // e.g. C:\Users\<user>\AppData\Roaming
+    const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
+    // Read and parse the JSON file
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const data = JSON.parse(content)
+      console.log(data)
+      console.log('[Main] Loaded server info:', data)
+      return data
+    } else {
+      console.warn('[Main] Server info file not found:', filePath)
+      return { port: 5173 }
+    }
+  } catch (error) {
+    console.error('[Main] Error reading server info:', error)
+    return null
+  }
+})
 
 // --- IPC handlers for Renderer communication ---
 ipcMain.handle('is-server-running', () => {
   return serverRunning
 })
-
-ipcMain.handle('get-server-info', () => {
-  // You can replace this with real info if your Python server writes to a file or logs a port
-  return serverRunning ? { port: 5173 } : null
-})
-
