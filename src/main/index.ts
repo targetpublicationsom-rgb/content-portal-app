@@ -15,12 +15,15 @@ let isQuitting = false
 // --- 🔥 Start Python Server ---
 function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
-    console.log('[Main] Starting Python server: python -m orchestrator.serv')
+    const pythonDir = path.join(process.cwd(), 'content-orchestration-service')
+
+    console.log(`[Main] Starting Python server in: ${pythonDir}`)
+    console.log('[Main] Command: python -m orchestrator.server')
 
     serverProcess = spawn('python', ['-m', 'orchestrator.server'], {
-      cwd: process.cwd(), // root of your project
+      cwd: pythonDir, // ✅ use specific directory
       shell: true,
-      detached: false
+      detached: false,
     })
 
     serverRunning = true
@@ -53,7 +56,9 @@ function startPythonServer(): Promise<void> {
       // ⚠️ Restart automatically if Electron app is still running
       if (!isQuitting) {
         console.log('[Main] Server closed unexpectedly — restarting...')
-        startPythonServer().catch((err) => console.error('[Main] Failed to restart Python server:', err))
+        startPythonServer().catch((err) =>
+          console.error('[Main] Failed to restart Python server:', err)
+        )
       }
     })
 
