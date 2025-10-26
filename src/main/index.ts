@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain } from 'electron'
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
+import { spawn, execSync, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -13,17 +13,44 @@ let serverRunning = false
 let isQuitting = false
 
 // --- 🔥 Start Python Server ---
-function startPythonServer(): Promise<void> {
+async function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     const pythonDir = path.join(process.cwd(), 'content-orchestration-service')
-
     console.log(`[Main] Starting Python server in: ${pythonDir}`)
-    console.log('[Main] Command: python -m orchestrator.server')
 
-    serverProcess = spawn('python', ['-m', 'orchestrator.server'], {
-      cwd: pythonDir, // ✅ use specific directory
-      shell: true,
+    // 🧹 --- Cleanup any existing Python processes ---
+    try {
+      if (process.platform === 'win32') {
+        console.log('[Main] Cleaning up existing Python processes...')
+        execSync('taskkill /IM python.exe /F', { stdio: 'ignore' })
+      } else {
+        console.log('[Main] Cleaning up existing Python processes...')
+        execSync('pkill -f "orchestrator.server"', { stdio: 'ignore' })
+      }
+    } catch {
+      // Ignore errors if nothing to kill
+    }
+
+    // 🐍 --- Resolve Python executable inside .venv ---
+    const pythonExec =
+      process.platform === 'win32'
+        ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(pythonDir, '.venv', 'bin', 'python')
+
+    // Check if venv python exists
+    if (!fs.existsSync(pythonExec)) {
+      console.error('[Main] Python virtual environment not found:', pythonExec)
+      reject(new Error('Python virtual environment missing'))
+      return
+    }
+
+    console.log(`[Main] Using Python executable: ${pythonExec}`)
+
+    // 🚀 --- Start Python server from .venv ---
+    serverProcess = spawn(pythonExec, ['-m', 'orchestrator.server'], {
+      cwd: pythonDir,
       detached: false,
+      stdio: ['pipe', 'pipe', 'pipe']
     })
 
     serverRunning = true
@@ -31,8 +58,6 @@ function startPythonServer(): Promise<void> {
     serverProcess.stdout.on('data', (data) => {
       const message = data.toString().trim()
       console.log(`[Python STDOUT]: ${message}`)
-
-      // Optional: detect startup message
       if (message.includes('Running on') || message.includes('Server started')) {
         resolve()
       }
@@ -53,7 +78,7 @@ function startPythonServer(): Promise<void> {
       serverRunning = false
       serverProcess = null
 
-      // ⚠️ Restart automatically if Electron app is still running
+      // ✅ Restart only if not quitting
       if (!isQuitting) {
         console.log('[Main] Server closed unexpectedly — restarting...')
         startPythonServer().catch((err) =>
@@ -62,23 +87,28 @@ function startPythonServer(): Promise<void> {
       }
     })
 
-    // Safety fallback in case server doesn’t print “ready” line
+    // Fallback resolve in case server doesn’t print a ready message
     setTimeout(() => resolve(), 3000)
   })
 }
 
 // --- 🧹 Stop Python Server ---
 async function stopPythonServer(): Promise<void> {
-  if (serverProcess && serverRunning) {
-    console.log('[Main] Stopping Python server...')
-    try {
-      serverProcess.kill('SIGTERM')
-    } catch (err) {
-      console.warn('[Main] Error while stopping server:', err)
+  if (!serverProcess) return
+  console.log('[Main] Stopping Python server...')
+
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /PID ${serverProcess.pid} /T /F`)
+    } else {
+      process.kill(serverProcess.pid, 'SIGTERM')
     }
-    serverRunning = false
-    serverProcess = null
+  } catch (err) {
+    console.warn('[Main] Error while stopping server:', err)
   }
+
+  serverProcess = null
+  serverRunning = false
 }
 
 // --- 🪟 Create Window ---
@@ -129,10 +159,8 @@ function createTray(): void {
     {
       label: 'Show App',
       click: () => {
-        if (mainWindow) {
-          mainWindow.show()
-          mainWindow.focus()
-        }
+        mainWindow?.show()
+        mainWindow?.focus()
       }
     },
     {
@@ -150,10 +178,8 @@ function createTray(): void {
   tray.setContextMenu(menu)
 
   tray.on('double-click', () => {
-    if (mainWindow) {
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    mainWindow?.show()
+    mainWindow?.focus()
   })
 }
 
@@ -165,7 +191,6 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Start server before creating UI
   try {
     await startPythonServer()
     console.log('[Main] Python server started successfully')
@@ -184,29 +209,23 @@ app.on('window-all-closed', () => {
 
 // --- 🧨 Graceful Quit ---
 app.on('before-quit', async (event) => {
-  if (!isQuitting) {
-    isQuitting = true
-  }
+  if (isQuitting) return
 
-  if (serverRunning) {
-    console.log('[Main] Stopping Python server before quit...')
-    event.preventDefault()
-    await stopPythonServer()
-    console.log('[Main] Python server stopped')
-    app.quit()
-  }
+  event.preventDefault()
+  isQuitting = true
+  console.log('[Main] Stopping Python server before quit...')
+  await stopPythonServer()
+  console.log('[Main] Python server stopped')
+  app.quit()
 })
 
+// --- IPC handlers ---
 ipcMain.handle('get-server-info', () => {
   try {
-    // Get the AppData/Roaming path (cross-platform safe)
-    const appDataDir = app.getPath('appData') // e.g. C:\Users\<user>\AppData\Roaming
+    const appDataDir = app.getPath('appData')
     const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
-    // Read and parse the JSON file
     if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf-8')
-      const data = JSON.parse(content)
-      console.log(data)
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
       console.log('[Main] Loaded server info:', data)
       return data
     } else {
@@ -219,7 +238,4 @@ ipcMain.handle('get-server-info', () => {
   }
 })
 
-// --- IPC handlers for Renderer communication ---
-ipcMain.handle('is-server-running', () => {
-  return serverRunning
-})
+ipcMain.handle('is-server-running', () => serverRunning)
