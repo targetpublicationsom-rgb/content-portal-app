@@ -5,29 +5,62 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import UploadForm from './UploadForm'
 
 interface Job {
-  id: string
-  name: string
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  job_id: string
+  format: 'single' | 'two-file'
+  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
+  gate_passed: boolean
+  gate_report_url: string
   created_at: string
+  updated_at: string
+  report_url: string
+  reason: string | null
+  stream_id: string | null
+  stream_name: string | null
+  standard_id: string | null
+  standard_name: string | null
+  subject_id: string | null
+  subject_name: string | null
+}
+
+interface JobsResponse {
+  items: Job[]
+  page: number
+  page_size: number
+  total: number
 }
 
 export default function Dashboard(): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
+  const [serverPort, setServerPort] = useState<number>()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [total, setTotal] = useState(0)
 
   useEffect(() => {
-    fetchJobs()
-  }, [])
+    const init = async (): Promise<void> => {
+      const serverInfo = await window.api.getServerInfo()
+      if (serverInfo?.port) {
+        setServerPort(serverInfo.port)
+        fetchJobs()
+      }
+    }
+    init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]) // Refetch when page changes
 
   const fetchJobs = async (): Promise<void> => {
     try {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
-        const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs`)
+        const response = await fetch(
+          `http://127.0.0.1:${serverInfo.port}/jobs?page=${currentPage}&page_size=${pageSize}`
+        )
         if (response.ok) {
-          const data = await response.json()
-          setJobs(data.jobs || [])
+          const data: JobsResponse = await response.json()
+          setJobs(data.items || [])
+          setTotal(data.total)
         }
       }
     } catch (error) {
@@ -37,20 +70,26 @@ export default function Dashboard(): React.JSX.Element {
     }
   }
 
-  const handleUpload = (): void => {
-    // TODO: Implement file upload
-    console.log('Upload clicked')
+  const handlePageChange = (page: number): void => {
+    setCurrentPage(page)
   }
 
-  const getStatusBadge = (status: string): React.JSX.Element => {
-    const variants: Record<string, 'default' | 'success' | 'warning' | 'info' | 'destructive'> = {
-      pending: 'warning',
-      processing: 'info',
-      completed: 'success',
-      failed: 'destructive'
+  const getStatusBadge = (state: Job['state']): React.JSX.Element => {
+    const styles: Record<string, string> = {
+      PENDING: 'bg-yellow-50 text-yellow-700 border-yellow-100 hover:bg-yellow-50',
+      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-50',
+      DONE: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-50',
+      FAILED: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-50'
     }
 
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>
+    return (
+      <Badge
+        variant="outline"
+        className={`capitalize font-medium ${styles[state] || 'bg-gray-50 text-gray-700 border-gray-100'}`}
+      >
+        {state.toLowerCase()}
+      </Badge>
+    )
   }
 
   return (
@@ -61,50 +100,160 @@ export default function Dashboard(): React.JSX.Element {
         <Button onClick={() => setShowUpload(true)}>Upload</Button>
       </div>
 
-      {/* Main Content - centered 80% */}
-      <div className="flex-1 flex justify-center overflow-auto p-4">
-        <div className="w-4/5 h-full rounded-lg border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">
-                    Loading jobs...
-                  </TableCell>
-                </TableRow>
-              ) : jobs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No jobs found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                jobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="font-medium">{job.name}</TableCell>
-                    <TableCell>{getStatusBadge(job.status)}</TableCell>
-                    <TableCell>{new Date(job.created_at).toLocaleString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm">
-                        View
-                      </Button>
-                    </TableCell>
+      {/* Main Content */}
+      <div className="flex-1 flex justify-center p-4">
+        <div className="w-full h-full rounded-lg border bg-card shadow-sm">
+          <div className="h-full flex flex-col">
+            <div className="p-4 flex items-center gap-4 border-b">
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold">Jobs</h2>
+              </div>
+            </div>
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[300px]">Job ID</TableHead>
+                    <TableHead className="w-[100px]">Status</TableHead>
+                    <TableHead className="w-[100px]">Format</TableHead>
+                    <TableHead className="w-[180px]">Created</TableHead>
+                    <TableHead className="text-right">Reports</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-24 text-center">
+                        <div className="flex items-center justify-center text-muted-foreground">
+                          Loading jobs...
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : jobs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center text-muted-foreground">
+                          <p>No jobs found</p>
+                          <p className="text-sm">Upload content to start processing</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    jobs.map((job) => (
+                      <TableRow key={job.job_id} className="group">
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono text-sm">{job?.job_id}</span>
+                            {(job.subject_name || job.standard_name || job.stream_name) && (
+                              <span className="text-sm text-muted-foreground">
+                                {job.subject_name || job.standard_name || job.stream_name}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">{getStatusBadge(job.state)}</div>
+                        </TableCell>
+                        <TableCell>
+                          {job.format && (
+                            <Badge
+                              variant="outline"
+                              className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
+                            >
+                              {job.format.replace('-', ' ')}
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span>{new Date(job.created_at).toLocaleDateString()}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {new Date(job.created_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {serverPort && job.report_url && (
+                              <Button variant="ghost" size="sm" asChild>
+                                <a
+                                  href={`http://127.0.0.1:${serverPort}${job.report_url}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  View Report
+                                </a>
+                              </Button>
+                            )}
+                            {job.gate_report_url && (
+                              <Button variant="ghost" size="sm" asChild>
+                                <a
+                                  href={job.gate_report_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  Gate Report
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {!loading && jobs.length > 0 && (
+              <div className="border-t px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {(currentPage - 1) * pageSize + 1} to{' '}
+                    {Math.min(currentPage * pageSize, total)} of {total} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      {'Previous'}
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
+                        (page) => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageChange(page)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage >= Math.ceil(total / pageSize)}
+                    >
+                      {'Next'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+        <UploadForm open={showUpload} onClose={() => setShowUpload(false)} />
       </div>
-      <UploadForm open={showUpload} onClose={() => setShowUpload(false)} />
     </div>
   )
 }
