@@ -1,9 +1,10 @@
-import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain } from 'electron'
+import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, protocol } from 'electron'
 import { spawn, execSync, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import * as fs from 'fs'
+import * as fsPromises from 'fs/promises'
 import icon from '../../resources/icon.png?asset'
-import fs from 'fs'
 import path from 'path'
 
 let mainWindow: BrowserWindow | null = null
@@ -184,7 +185,18 @@ function createTray(): void {
 }
 
 // --- 🚀 App Ready ---
-app.whenReady().then(async () => {
+// Handle HTML file reading
+ipcMain.handle('read-html-file', async (_, filePath: string) => {
+  try {
+    const content = await fsPromises.readFile(filePath, 'utf-8')
+    return content
+  } catch (error) {
+    console.error('Error reading HTML file:', error)
+    throw error
+  }
+})
+
+app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
 
   app.on('browser-window-created', (_, window) => {
@@ -192,7 +204,7 @@ app.whenReady().then(async () => {
   })
 
   try {
-    await startPythonServer()
+    startPythonServer()
     console.log('[Main] Python server started successfully')
   } catch (err) {
     console.error('[Main] Failed to start Python server:', err)
@@ -239,3 +251,4 @@ ipcMain.handle('get-server-info', () => {
 })
 
 ipcMain.handle('is-server-running', () => serverRunning)
+ipcMain.handle('get-app-data-path', () => app.getPath('appData'))

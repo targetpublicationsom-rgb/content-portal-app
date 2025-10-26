@@ -3,6 +3,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import UploadForm from './UploadForm'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 interface Job {
   job_id: string
@@ -37,6 +38,9 @@ export default function Dashboard(): React.JSX.Element {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(20)
   const [total, setTotal] = useState(0)
+  const [showReport, setShowReport] = useState(false)
+  const [reportContent, setReportContent] = useState<string>('')
+  const [reportTitle, setReportTitle] = useState('')
 
   useEffect(() => {
     const init = async (): Promise<void> => {
@@ -72,6 +76,17 @@ export default function Dashboard(): React.JSX.Element {
 
   const handlePageChange = (page: number): void => {
     setCurrentPage(page)
+  }
+
+  const handleViewReport = async (filePath: string, title: string): Promise<void> => {
+    try {
+      const htmlContent = await window.api.readHtmlFile(filePath)
+      setReportContent(htmlContent)
+      setReportTitle(title)
+      setShowReport(true)
+    } catch (error) {
+      console.error('Error reading HTML file:', error)
+    }
   }
 
   const getStatusBadge = (state: Job['state']): React.JSX.Element => {
@@ -188,29 +203,22 @@ export default function Dashboard(): React.JSX.Element {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex justify-end gap-2  transition-opacity">
                             {serverPort && job.report_url && (
-                              <Button variant="ghost" size="sm" asChild>
-                                <a
-                                  href={`http://127.0.0.1:${serverPort}${job.report_url}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2"
-                                >
-                                  View Report
-                                </a>
-                              </Button>
-                            )}
-                            {job.gate_report_url && (
-                              <Button variant="ghost" size="sm" asChild>
-                                <a
-                                  href={job.gate_report_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2"
-                                >
-                                  Gate Report
-                                </a>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleViewReport(
+                                    job.gate_report_url.replace(
+                                      /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
+                                      ''
+                                    ),
+                                    `Report for ${job.job_id}`
+                                  )
+                                }
+                              >
+                                View Report
                               </Button>
                             )}
                           </div>
@@ -267,6 +275,21 @@ export default function Dashboard(): React.JSX.Element {
           </div>
         </div>
         <UploadForm open={showUpload} onClose={() => setShowUpload(false)} />
+
+        <Dialog open={showReport} onOpenChange={setShowReport}>
+          <DialogContent className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0">
+            <DialogHeader className="px-6 py-4 border-b">
+              <DialogTitle>{reportTitle}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto p-6">
+              <div
+                className="w-full h-full border-0 overflow-auto"
+                style={{ minHeight: '500px' }}
+                dangerouslySetInnerHTML={{ __html: reportContent }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
