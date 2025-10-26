@@ -114,8 +114,8 @@ async function stopPythonServer(): Promise<void> {
 // --- 🪟 Create Window ---
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1280, // greater than 900
+    height: 800, // greater than 670
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
