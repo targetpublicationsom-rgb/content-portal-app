@@ -44,39 +44,160 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
     const es = new EventSource(`http://127.0.0.1:${serverPort}/jobs/${jobId}/events`)
     eventSourceRef.current = es
 
-    es.onmessage = (event) => {
-      if (!event.data) return // skip heartbeat
-      try {
-        const data = JSON.parse(event.data)
-        console.log('Received event:', data)
-        setJobStatus(data)
+    // Helper to update stage immutably and handle previous/future stages
+    const updateStage = (
+      stageName: string,
+      status: Stage['status'],
+      ts?: string,
+      metrics?: Stage['metrics']
+    ) => {
+      setJobStatus((prev) => {
+        if (!prev) return prev
 
-        if (data.state === 'DONE' || data.state === 'FAILED') {
-          es.close()
+        const stageIndex = prev.stages.findIndex((s) => s.name === stageName)
+        let newStages: Stage[]
+
+        if (stageIndex !== -1) {
+          // Update all stages
+          newStages = prev.stages.map((stage, index) => {
+            if (stage.name === stageName) {
+              return {
+                ...stage,
+                status,
+                ...(ts
+                  ? {
+                      started_at: status === 'running' ? ts : stage.started_at,
+                      ended_at: status !== 'running' ? ts : stage.ended_at
+                    }
+                  : {}),
+                metrics: metrics || stage.metrics
+              }
+            } else if (index < stageIndex && stage.status !== 'ok' && stage.status !== 'error') {
+              // Previous stages marked ok
+              return { ...stage, status: 'ok', ended_at: stage.ended_at || ts }
+            } else if (index > stageIndex && stage.status !== 'error') {
+              // Future stages pending
+              return { ...stage, status: 'pending' }
+            }
+            return stage
+          })
+        } else {
+          // Stage doesn't exist yet, add it
+          newStages = [
+            ...prev.stages,
+            {
+              name: stageName,
+              status,
+              started_at: status === 'running' ? ts : undefined,
+              ended_at: status !== 'running' ? ts : undefined,
+              metrics
+            }
+          ]
         }
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err)
-      }
+
+        return {
+          ...prev,
+          stages: newStages,
+          state: status === 'error' ? 'FAILED' : 'PROCESSING'
+        }
+      })
     }
+
+    // SSE listeners
+    es.addEventListener('stage.started', (event: MessageEvent) => {
+      const data = JSON.parse(event.data).data
+      updateStage(data.stage, 'running', data.ts)
+    })
+
+    es.addEventListener('stage.succeeded', (event: MessageEvent) => {
+      const data = JSON.parse(event.data).data
+      updateStage(
+        data.stage,
+        'ok',
+        data.ts,
+        data.extra?.duration_sec ? { duration_sec: data.extra.duration_sec } : undefined
+      )
+    })
+
+    es.addEventListener('stage.failed', (event: MessageEvent) => {
+      const data = JSON.parse(event.data).data
+      updateStage(data.stage, 'error', data.ts)
+    })
+
+    es.addEventListener('gate.updated', (event: MessageEvent) => {
+      const data = JSON.parse(event.data).data
+      setJobStatus((prev) =>
+        prev
+          ? { ...prev, gate_passed: data.passed, gate_report_url: data.extra?.report_html }
+          : prev
+      )
+    })
+
+    es.addEventListener('job.succeeded', () => {
+      setJobStatus((prev) => {
+        if (!prev) return prev
+        const newStages = prev.stages.map((stage) =>
+          stage.status === 'pending' || stage.status === 'running'
+            ? { ...stage, status: 'ok', ended_at: new Date().toISOString() }
+            : stage
+        )
+        return { ...prev, state: 'DONE', stages: newStages }
+      })
+    })
+
+    es.addEventListener('job.failed', () => {
+      setJobStatus((prev) => (prev ? { ...prev, state: 'FAILED' } : prev))
+    })
+
+    // Initial job fetch
+    fetch(`http://127.0.0.1:${serverPort}/jobs/${jobId}`)
+      .then((res) => res.json())
+      .then((data: { stages: Stage[] } & Omit<JobStatus, 'stages'>) => {
+        setJobStatus({
+          ...data,
+          stages: data.stages.map((stage) => ({
+            ...stage,
+            status:
+              stage.status === 'ok'
+                ? 'ok'
+                : stage.status === 'error'
+                  ? 'error'
+                  : stage.started_at
+                    ? 'running'
+                    : 'pending'
+          }))
+        })
+      })
+      .catch(console.error)
 
     es.onerror = (err) => {
       console.warn('SSE error:', err, 'readyState:', es.readyState)
-      // Do NOT close manually; let auto-reconnect handle it
     }
 
-    return () => es.close()
+    return () => {
+      es.close()
+      eventSourceRef.current = null
+    }
   }, [open, jobId, serverPort])
 
-  const getStatusBadge = (status: Stage['status'] | 'ok' | 'error' | 'running' | 'pending') => {
+  const getStatusBadge = (
+    status: Stage['status'] | 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
+  ) => {
     const styles: Record<string, string> = {
-      ok: 'bg-green-50 text-green-700 border-green-100',
-      error: 'bg-red-50 text-red-700 border-red-100',
+      DONE: 'bg-green-50 text-green-700 border-green-100',
+      FAILED: 'bg-red-50 text-red-700 border-red-100',
+      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-100',
+      PENDING: 'bg-gray-50 text-gray-700 border-gray-100',
       running: 'bg-blue-50 text-blue-700 border-blue-100',
-      pending: 'bg-gray-50 text-gray-700 border-gray-100'
+      ok: 'bg-green-50 text-green-700 border-green-100',
+      error: 'bg-red-50 text-red-700 border-red-100'
     }
 
     return (
-      <Badge variant="outline" className={`capitalize ${styles[status]}`}>
+      <Badge variant="outline" className={`capitalize flex items-center gap-2 ${styles[status]}`}>
+        {status === 'running' && (
+          <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        )}
         {status}
       </Badge>
     )
@@ -98,33 +219,34 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
                 </div>
                 <div>
                   <div className="font-medium">Status</div>
-                  <div className="text-right">
-                    {getStatusBadge(
-                      jobStatus.state === 'DONE'
-                        ? 'ok'
-                        : jobStatus.state === 'FAILED'
-                          ? 'error'
-                          : jobStatus.state === 'PROCESSING'
-                            ? 'running'
-                            : 'pending'
-                    )}
-                  </div>
+                  <div className="text-right">{getStatusBadge(jobStatus.state)}</div>
                 </div>
               </div>
 
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="font-medium">Stages</div>
                 {jobStatus.stages.map((stage) => (
-                  <div key={stage.name} className="flex items-center justify-between">
-                    <div>
+                  <div
+                    key={stage.name}
+                    className="flex items-center justify-between p-3 border rounded-md bg-card"
+                  >
+                    <div className="space-y-1">
                       <div className="font-medium">{stage.name}</div>
-                      {stage.metrics && (
-                        <div className="text-sm text-muted-foreground">
-                          Duration: {stage.metrics.duration_sec.toFixed(1)}s
-                        </div>
-                      )}
+                      <div className="text-sm text-muted-foreground space-y-0.5">
+                        {stage.started_at && (
+                          <div>Started: {new Date(stage.started_at).toLocaleTimeString()}</div>
+                        )}
+                        {stage.ended_at && (
+                          <div>Ended: {new Date(stage.ended_at).toLocaleTimeString()}</div>
+                        )}
+                        {stage.metrics && (
+                          <div>Duration: {stage.metrics.duration_sec.toFixed(1)}s</div>
+                        )}
+                      </div>
                     </div>
-                    <div>{getStatusBadge(stage.status)}</div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getStatusBadge(stage.status)}
+                    </div>
                   </div>
                 ))}
               </div>
