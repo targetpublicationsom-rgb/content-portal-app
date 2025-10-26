@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Form, FormField, FormItem, FormMessage } from './ui/form'
 import api from '../lib/axios'
+import toast from 'react-hot-toast'
 
 const formSchema = z
   .object({
@@ -218,8 +219,10 @@ export default function UploadForm({
         })
 
         if (!response.ok) {
+          toast.error('Something went wrong!')
           throw new Error('Failed to create job')
         }
+        toast.success('Job created Successfully!')
       }
     } catch (error) {
       console.error('Failed to create job:', error)

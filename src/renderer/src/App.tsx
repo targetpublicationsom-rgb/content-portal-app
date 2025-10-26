@@ -1,5 +1,6 @@
 import Dashboard from './components/Dashboard'
 import StatusBar from './components/StatusBar'
+import { Toaster } from 'react-hot-toast'
 
 function App(): React.JSX.Element {
   return (
@@ -8,6 +9,7 @@ function App(): React.JSX.Element {
         <Dashboard />
       </div>
       <StatusBar />
+      <Toaster position="top-center" reverseOrder={false} />
     </div>
   )
 }
