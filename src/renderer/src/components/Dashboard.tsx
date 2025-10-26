@@ -274,10 +274,28 @@ export default function Dashboard(): React.JSX.Element {
             )}
           </div>
         </div>
-        <UploadForm open={showUpload} onClose={() => setShowUpload(false)} />
+        <UploadForm open={showUpload} onClose={() => setShowUpload(false)} onSuccess={fetchJobs} />
 
-        <Dialog open={showReport} onOpenChange={setShowReport}>
-          <DialogContent className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0">
+        <Dialog
+          open={showReport}
+          onOpenChange={(open) => {
+            setShowReport(open)
+            if (!open) {
+              // Clean up the report content when dialog closes
+              setReportContent('')
+              // Add a small delay to ensure smooth transition
+              setTimeout(() => {
+                document.body.style.pointerEvents = 'auto'
+              }, 100)
+            }
+          }}
+        >
+          <DialogContent
+            className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0"
+            onInteractOutside={(e) => {
+              e.preventDefault()
+            }}
+          >
             <DialogHeader className="px-6 py-4 border-b">
               <DialogTitle>{reportTitle}</DialogTitle>
             </DialogHeader>

@@ -55,7 +55,17 @@ interface Option {
   name: string
 }
 
-export default function UploadForm({ open, onClose }: UploadFormProps): React.JSX.Element {
+interface UploadFormProps {
+  open: boolean
+  onClose: () => void
+  onSuccess?: () => void
+}
+
+export default function UploadForm({
+  open,
+  onClose,
+  onSuccess
+}: UploadFormProps): React.JSX.Element {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -198,12 +208,45 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
     fetchSubjects()
   }, [standardValue, form])
 
+  const postJob = async (formData: FormData): Promise<void> => {
+    try {
+      const serverInfo = await window.api.getServerInfo()
+      if (serverInfo?.port) {
+        const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs`, {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to create job')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create job:', error)
+      throw error
+    }
+  }
+
   const onSubmit = async (data: FormValues): Promise<void> => {
     try {
       setLoading(true)
-      await api.post('/upload', data)
+
+      // Create FormData object
+      const formData = new FormData()
+      formData.append('format', data.fileFormat)
+      formData.append('file_question', data.questionFile)
+      if (data.fileFormat === 'two-file' && data.answerFile) {
+        formData.append('file_answer', data.answerFile)
+      }
+
+      // Submit the job
+      await postJob(formData)
+
+      // Reset form and close dialog
       form.reset()
       onClose()
+      // Trigger refresh of jobs list
+      onSuccess?.()
     } catch (e) {
       console.error('submit', e)
       setErrors((prev) => ({ ...prev, networkError: true }))
@@ -264,16 +307,16 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     name="board"
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">
-                          Board *
-                        </span>
+                        <span className="text-sm font-medium text-muted-foreground">Board *</span>
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
                           disabled={boardsLoading}
                         >
                           <SelectTrigger className="w-full h-10">
-                            <SelectValue placeholder={boardsLoading ? 'Loading...' : 'Select board'} />
+                            <SelectValue
+                              placeholder={boardsLoading ? 'Loading...' : 'Select board'}
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {boards.map((b) => (
