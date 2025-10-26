@@ -192,8 +192,8 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     </SelectTrigger>
                     <SelectContent>
                       {streams.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s?.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -210,7 +210,7 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     </SelectTrigger>
                     <SelectContent>
                       {boards.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
+                        <SelectItem key={b.id} value={String(b.id)}>
                           {b.name}
                         </SelectItem>
                       ))}
@@ -226,7 +226,7 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     </SelectTrigger>
                     <SelectContent>
                       {mediums.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
+                        <SelectItem key={m.id} value={String(m.id)}>
                           {m.name}
                         </SelectItem>
                       ))}
@@ -254,7 +254,7 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     </SelectTrigger>
                     <SelectContent>
                       {standards.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
+                        <SelectItem key={s.id} value={String(s.id)}>
                           {s.name}
                         </SelectItem>
                       ))}
@@ -283,7 +283,7 @@ export default function UploadForm({ open, onClose }: UploadFormProps): React.JS
                     </SelectTrigger>
                     <SelectContent>
                       {subjects.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
+                        <SelectItem key={s.id} value={String(s.id)}>
                           {s.name}
                         </SelectItem>
                       ))}
