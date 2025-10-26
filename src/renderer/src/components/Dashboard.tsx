@@ -115,7 +115,8 @@ export default function Dashboard(): React.JSX.Element {
                   <TableRow>
                     <TableHead className="w-[300px]">Job ID</TableHead>
                     <TableHead className="w-[100px]">Status</TableHead>
-                    <TableHead className="w-[100px]">Format</TableHead>
+                    <TableHead className="w-[150px]">Format</TableHead>
+                    <TableHead className="w-[200px]">Gate Status</TableHead>
                     <TableHead className="w-[180px]">Created</TableHead>
                     <TableHead className="text-right">Reports</TableHead>
                   </TableRow>
@@ -164,7 +165,20 @@ export default function Dashboard(): React.JSX.Element {
                             </Badge>
                           )}
                         </TableCell>
-
+                        <TableCell>
+                          {
+                            <Badge
+                              variant="outline"
+                              className={`capitalize font-medium ${
+                                job.gate_passed
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                  : 'bg-rose-50 text-rose-700 border-rose-100'
+                              }`}
+                            >
+                              Gate {job.gate_passed ? 'passed' : 'failed'}
+                            </Badge>
+                          }
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
                             <span>{new Date(job.created_at).toLocaleDateString()}</span>
