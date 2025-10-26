@@ -4,6 +4,8 @@ import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import JobProgress from './JobProgress'
+import { log } from 'console'
 
 interface Job {
   job_id: string
@@ -36,11 +38,13 @@ export default function Dashboard(): React.JSX.Element {
   const [showUpload, setShowUpload] = useState(false)
   const [serverPort, setServerPort] = useState<number>()
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(20)
+  const [pageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState<string>('')
   const [reportTitle, setReportTitle] = useState('')
+  const [showJobProgress, setShowJobProgress] = useState(false)
+  const [activeJobId, setActiveJobId] = useState<string>('')
 
   useEffect(() => {
     const init = async (): Promise<void> => {
@@ -123,8 +127,8 @@ export default function Dashboard(): React.JSX.Element {
               <div className="flex-1">
                 <h2 className="text-lg font-semibold">Jobs</h2>
               </div>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="sm"
                 onClick={() => {
                   setLoading(true)
@@ -284,7 +288,26 @@ export default function Dashboard(): React.JSX.Element {
             )}
           </div>
         </div>
-        <UploadForm open={showUpload} onClose={() => setShowUpload(false)} onSuccess={fetchJobs} />
+        <UploadForm
+          open={showUpload}
+          onClose={() => setShowUpload(false)}
+          onSuccess={(jobId) => {
+            setActiveJobId(jobId)
+            setShowJobProgress(true)
+            fetchJobs()
+          }}
+        />
+
+        <JobProgress
+          open={showJobProgress}
+          onClose={() => {
+            setShowJobProgress(false)
+            setActiveJobId('')
+            fetchJobs()
+          }}
+          jobId={activeJobId}
+          serverPort={serverPort || 0}
+        />
 
         <Dialog
           open={showReport}

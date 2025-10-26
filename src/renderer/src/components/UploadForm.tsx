@@ -59,7 +59,7 @@ interface Option {
 interface UploadFormProps {
   open: boolean
   onClose: () => void
-  onSuccess?: () => void
+  onSuccess?: (jobId: string) => void
 }
 
 export default function UploadForm({
@@ -209,7 +209,7 @@ export default function UploadForm({
     fetchSubjects()
   }, [standardValue, form])
 
-  const postJob = async (formData: FormData): Promise<void> => {
+  const postJob = async (formData: FormData): Promise<any> => {
     try {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
@@ -223,11 +223,13 @@ export default function UploadForm({
           throw new Error('Failed to create job')
         }
         toast.success('Job created Successfully!')
+        return response.json()
       }
     } catch (error) {
       console.error('Failed to create job:', error)
       throw error
     }
+    return null
   }
 
   const onSubmit = async (data: FormValues): Promise<void> => {
@@ -243,13 +245,12 @@ export default function UploadForm({
       }
 
       // Submit the job
-      await postJob(formData)
-
+      const response = await postJob(formData)
       // Reset form and close dialog
       form.reset()
       onClose()
       // Trigger refresh of jobs list
-      onSuccess?.()
+      if (response.job_id) onSuccess?.(response?.job_id)
     } catch (e) {
       console.error('submit', e)
       setErrors((prev) => ({ ...prev, networkError: true }))

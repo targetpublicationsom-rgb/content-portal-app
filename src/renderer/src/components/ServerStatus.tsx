@@ -132,9 +132,7 @@ export function ServerStatus(): React.JSX.Element {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
-      const data = await response.json()
-      console.log('Job created:', data)
-
+      await response.json()
       // Refresh jobs list
       await fetchJobs()
     } catch (err) {
