@@ -123,6 +123,16 @@ export default function Dashboard(): React.JSX.Element {
               <div className="flex-1">
                 <h2 className="text-lg font-semibold">Jobs</h2>
               </div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setLoading(true)
+                  fetchJobs()
+                }}
+              >
+                Refresh
+              </Button>
             </div>
             <div className="overflow-auto">
               <Table>
