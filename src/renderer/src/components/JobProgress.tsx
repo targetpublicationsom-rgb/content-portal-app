@@ -183,22 +183,35 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
   const getStatusBadge = (
     status: Stage['status'] | 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   ) => {
+    const displayMap: Record<string, string> = {
+      ok: 'DONE',
+      error: 'FAILED',
+      running: 'RUNNING',
+      pending: 'PENDING',
+      PROCESSING: 'PROCESSING',
+      DONE: 'DONE',
+      FAILED: 'FAILED'
+    }
+
     const styles: Record<string, string> = {
       DONE: 'bg-green-50 text-green-700 border-green-100',
       FAILED: 'bg-red-50 text-red-700 border-red-100',
-      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-100',
+      RUNNING: 'bg-blue-50 text-blue-700 border-blue-100',
       PENDING: 'bg-gray-50 text-gray-700 border-gray-100',
-      running: 'bg-blue-50 text-blue-700 border-blue-100',
-      ok: 'bg-green-50 text-green-700 border-green-100',
-      error: 'bg-red-50 text-red-700 border-red-100'
+      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-100'
     }
 
+    const displayStatus = displayMap[status] || status
+
     return (
-      <Badge variant="outline" className={`capitalize flex items-center gap-2 ${styles[status]}`}>
+      <Badge
+        variant="outline"
+        className={`capitalize flex items-center gap-2 ${styles[displayStatus]}`}
+      >
         {status === 'running' && (
           <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         )}
-        {status}
+        {displayStatus}
       </Badge>
     )
   }
