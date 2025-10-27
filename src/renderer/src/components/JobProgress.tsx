@@ -279,7 +279,10 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
                                   stage?.started_at && (
                                     <div className="flex items-center gap-1">
                                       <Clock className="h-3.5 w-3.5" />
-                                      <span>Duration: {stage?.started_at}s</span>
+                                      <span>
+                                        Started At:{' '}
+                                        {new Date(stage?.started_at).toLocaleTimeString()}
+                                      </span>
                                     </div>
                                   )
                                 )}
