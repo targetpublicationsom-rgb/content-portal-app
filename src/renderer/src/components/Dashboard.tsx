@@ -42,7 +42,7 @@ export default function Dashboard(): React.JSX.Element {
   const [showUpload, setShowUpload] = useState(false)
   const [serverPort, setServerPort] = useState<number>()
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(10)
+  const [pageSize] = useState(8)
   const [total, setTotal] = useState(0)
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState<string>('')
@@ -184,7 +184,7 @@ export default function Dashboard(): React.JSX.Element {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center">
+                        <TableCell colSpan={12} className="h-24 text-center">
                           <div className="flex items-center justify-center text-muted-foreground">
                             Loading jobs...
                           </div>
