@@ -10,7 +10,8 @@ const api = {
   isServerRunning: (): Promise<boolean> => ipcRenderer.invoke('is-server-running'),
 
   // Read HTML file content
-  readHtmlFile: (filePath: string): Promise<string> => ipcRenderer.invoke('read-html-file', filePath)
+  readHtmlFile: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('read-html-file', filePath)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

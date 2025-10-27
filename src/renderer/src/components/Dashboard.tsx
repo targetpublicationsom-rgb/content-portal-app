@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import { useNavigate } from 'react-router-dom'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
+import { Eye, FileText, RefreshCcw } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 
 interface Job {
   job_id: string
@@ -32,6 +35,7 @@ interface JobsResponse {
 }
 
 export default function Dashboard(): React.JSX.Element {
+  const navigate = useNavigate()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
@@ -111,236 +115,272 @@ export default function Dashboard(): React.JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col pb-12">
-      {/* Header */}
-      <div className="flex w-full items-center justify-between border-b p-4 bg-card">
-        <h1 className="text-2xl font-bold">Job Dashboard</h1>
-        <Button onClick={() => setShowUpload(true)}>Upload</Button>
-      </div>
+    <TooltipProvider>
+      <div className="flex-1 flex flex-col pb-12">
+        {/* Header */}
+        <div className="flex w-full items-center justify-between border-b p-4 bg-card">
+          <h1 className="text-2xl font-bold">Job Dashboard</h1>
+          <Button onClick={() => setShowUpload(true)}>Upload</Button>
+        </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex justify-center p-4">
-        <div className="w-full h-full rounded-lg border bg-card shadow-sm">
-          <div className="h-full flex flex-col">
-            <div className="p-4 flex items-center gap-4 border-b">
-              <div className="flex-1">
-                <h2 className="text-lg font-semibold">Jobs</h2>
+        {/* Main Content */}
+        <div className="flex-1 flex justify-center p-4">
+          <div className="w-full h-full rounded-lg border bg-card shadow-sm">
+            <div className="h-full flex flex-col">
+              <div className="p-4 flex items-center gap-4 border-b">
+                <div className="flex-1">
+                  <h2 className="text-lg font-semibold">Jobs</h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setLoading(true)
+                    fetchJobs()
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <RefreshCcw />
+                  Refresh
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setLoading(true)
-                  fetchJobs()
-                }}
-              >
-                Refresh
-              </Button>
-            </div>
-            <div className="overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px]">Job ID</TableHead>
-                    <TableHead className="w-[100px]">Status</TableHead>
-                    <TableHead className="w-[150px]">Format</TableHead>
-                    <TableHead className="w-[200px]">Gate Status</TableHead>
-                    <TableHead className="w-[180px]">Created</TableHead>
-                    <TableHead className="text-right">Reports</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center">
-                        <div className="flex items-center justify-center text-muted-foreground">
-                          Loading jobs...
-                        </div>
-                      </TableCell>
+                      <TableHead>Job ID</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Format</TableHead>
+                      <TableHead>Gate Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ) : jobs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={12} className="h-24 text-center">
-                        <div className="flex flex-col items-center justify-center text-muted-foreground">
-                          <p>No jobs found</p>
-                          <p className="text-sm">Upload content to start processing</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    jobs.map((job) => (
-                      <TableRow key={job.job_id} className="group">
-                        <TableCell className="font-medium">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-mono text-sm">{job?.job_id}</span>
-                            {(job.subject_name || job.standard_name || job.stream_name) && (
-                              <span className="text-sm text-muted-foreground">
-                                {job.subject_name || job.standard_name || job.stream_name}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">{getStatusBadge(job.state)}</div>
-                        </TableCell>
-                        <TableCell>
-                          {job.format && (
-                            <Badge
-                              variant="outline"
-                              className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
-                            >
-                              {job.format.replace('-', ' ')}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {
-                            <Badge
-                              variant="outline"
-                              className={`capitalize font-medium ${
-                                job.gate_passed
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                  : 'bg-rose-50 text-rose-700 border-rose-100'
-                              }`}
-                            >
-                              Gate {job.gate_passed ? 'passed' : 'failed'}
-                            </Badge>
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <span>{new Date(job.created_at).toLocaleDateString()}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {new Date(job.created_at).toLocaleTimeString()}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2  transition-opacity">
-                            {serverPort && job.report_url && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleViewReport(
-                                    job.gate_report_url.replace(
-                                      /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
-                                      ''
-                                    ),
-                                    `Report for ${job.job_id}`
-                                  )
-                                }
-                              >
-                                View Report
-                              </Button>
-                            )}
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-24 text-center">
+                          <div className="flex items-center justify-center text-muted-foreground">
+                            Loading jobs...
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            {!loading && jobs.length > 0 && (
-              <div className="border-t px-4 py-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {(currentPage - 1) * pageSize + 1} to{' '}
-                    {Math.min(currentPage * pageSize, total)} of {total} entries
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      {'Previous'}
-                    </Button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
-                        (page) => (
-                          <Button
-                            key={page}
-                            variant={currentPage === page ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(page)}
-                            className="h-8 w-8 p-0"
-                          >
-                            {page}
-                          </Button>
-                        )
-                      )}
+                    ) : jobs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="h-24 text-center">
+                          <div className="flex flex-col items-center justify-center text-muted-foreground">
+                            <p>No jobs found</p>
+                            <p className="text-sm">Upload content to start processing</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      jobs.map((job) => (
+                        <TableRow key={job.job_id} className="group">
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-mono text-sm">{job?.job_id}</span>
+                              {(job.subject_name || job.standard_name || job.stream_name) && (
+                                <span className="text-sm text-muted-foreground">
+                                  {job.subject_name || job.standard_name || job.stream_name}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(job.state)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {job.format && (
+                              <Badge
+                                variant="outline"
+                                className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
+                              >
+                                {job.format.replace('-', ' ')}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {
+                              <Badge
+                                variant="outline"
+                                className={`capitalize font-medium ${
+                                  job.gate_passed
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                    : 'bg-rose-50 text-rose-700 border-rose-100'
+                                }`}
+                              >
+                                Gate {job.gate_passed ? 'passed' : 'failed'}
+                              </Badge>
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span>{new Date(job.created_at).toLocaleDateString()}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(job.created_at).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2 transition-opacity">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => navigate(`/jobs/${job.job_id}`)}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      View Details
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>View job details and processing stages</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              {serverPort && job.report_url && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleViewReport(
+                                            job.gate_report_url.replace(
+                                              /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
+                                              ''
+                                            ),
+                                            `Report for ${job.job_id}`
+                                          )
+                                        }
+                                        className="flex items-center gap-2"
+                                      >
+                                        <FileText className="h-4 w-4" />
+                                        View Report
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>View the quality gate report</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {!loading && jobs.length > 0 && (
+                <div className="border-t px-4 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      Showing {(currentPage - 1) * pageSize + 1} to{' '}
+                      {Math.min(currentPage * pageSize, total)} of {total} entries
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage >= Math.ceil(total / pageSize)}
-                    >
-                      {'Next'}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        {'Previous'}
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
+                          (page) => (
+                            <Button
+                              key={page}
+                              variant={currentPage === page ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => handlePageChange(page)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {page}
+                            </Button>
+                          )
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage >= Math.ceil(total / pageSize)}
+                      >
+                        {'Next'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        <UploadForm
-          open={showUpload}
-          onClose={() => setShowUpload(false)}
-          onSuccess={(jobId) => {
-            setActiveJobId(jobId)
-            setShowJobProgress(true)
-            fetchJobs()
-          }}
-        />
+          <UploadForm
+            open={showUpload}
+            onClose={() => setShowUpload(false)}
+            onSuccess={(jobId) => {
+              setActiveJobId(jobId)
+              setShowJobProgress(true)
+              fetchJobs()
+            }}
+          />
 
-        <JobProgress
-          open={showJobProgress}
-          onClose={() => {
-            setShowJobProgress(false)
-            setActiveJobId('')
-            fetchJobs()
-          }}
-          jobId={activeJobId}
-          serverPort={serverPort || 0}
-        />
+          <JobProgress
+            open={showJobProgress}
+            onClose={() => {
+              setShowJobProgress(false)
+              setActiveJobId('')
+              fetchJobs()
+            }}
+            jobId={activeJobId}
+            serverPort={serverPort || 0}
+          />
 
-        <Dialog
-          open={showReport}
-          onOpenChange={(open) => {
-            setShowReport(open)
-            if (!open) {
-              // Clean up the report content when dialog closes
-              setReportContent('')
-              // Add a small delay to ensure smooth transition
-              setTimeout(() => {
-                document.body.style.pointerEvents = 'auto'
-              }, 100)
-            }
-          }}
-        >
-          <DialogContent
-            className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0"
-            onInteractOutside={(e) => {
-              e.preventDefault()
+          <Dialog
+            open={showReport}
+            onOpenChange={(open) => {
+              setShowReport(open)
+              if (!open) {
+                // Clean up the report content when dialog closes
+                setReportContent('')
+                // Add a small delay to ensure smooth transition
+                setTimeout(() => {
+                  document.body.style.pointerEvents = 'auto'
+                }, 100)
+              }
             }}
           >
-            <DialogHeader className="px-6 py-4 border-b">
-              <DialogTitle>{reportTitle}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-auto p-6">
-              <div
-                className="w-full h-full border-0 overflow-auto"
-                style={{ minHeight: '500px' }}
-                dangerouslySetInnerHTML={{ __html: reportContent }}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+            <DialogContent
+              className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0"
+              onInteractOutside={(e) => {
+                e.preventDefault()
+              }}
+            >
+              <DialogHeader className="px-6 py-4 border-b">
+                <DialogTitle>{reportTitle}</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-auto p-6">
+                <div
+                  className="w-full h-full border-0 overflow-auto"
+                  style={{ minHeight: '500px' }}
+                  dangerouslySetInnerHTML={{ __html: reportContent }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   )
 }
