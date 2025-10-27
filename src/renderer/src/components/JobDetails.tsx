@@ -26,6 +26,12 @@ interface JobDetails {
   workspace: string
   report_url: string
   stages: Stage[]
+  stream_id: number | null
+  stream_name: string | null
+  standard_id: number | null
+  standard_name: string | null
+  subject_id: number | null
+  subject_name: string | null
 }
 
 export default function JobDetails(): React.JSX.Element {
@@ -90,6 +96,18 @@ export default function JobDetails(): React.JSX.Element {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Format</label>
                   <p className="mt-1 capitalize">{job.format.replace('-', ' ')}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Stream</label>
+                  <p className="mt-1">{job.stream_name || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Standard</label>
+                  <p className="mt-1">{job.standard_name || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Subject</label>
+                  <p className="mt-1">{job.subject_name || '-'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">State</label>

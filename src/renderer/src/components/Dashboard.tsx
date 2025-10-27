@@ -6,13 +6,14 @@ import { useNavigate } from 'react-router-dom'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
-import { Eye, FileText, RefreshCcw } from 'lucide-react'
+import { Eye, FileText, RefreshCcw, RotateCw, Upload } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import toast from 'react-hot-toast'
 
 interface Job {
   job_id: string
   format: 'single' | 'two-file'
-  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
+  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED' | 'RUNNING'
   gate_passed: boolean
   gate_report_url: string
   created_at: string
@@ -96,6 +97,30 @@ export default function Dashboard(): React.JSX.Element {
     }
   }
 
+  const handleRerun = async (jobId: string): Promise<void> => {
+    try {
+      const serverInfo = await window.api.getServerInfo()
+      if (serverInfo?.port) {
+        const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs/${jobId}/rerun`, {
+          method: 'POST'
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          toast.error(errorData.detail || 'Failed to rerun job')
+          return
+        }
+
+        setActiveJobId(jobId)
+        setShowJobProgress(true)
+        fetchJobs()
+        toast.success('Job rerun started successfully')
+      }
+    } catch (error) {
+      console.error('Failed to rerun job:', error)
+    }
+  }
+
   const getStatusBadge = (state: Job['state']): React.JSX.Element => {
     const styles: Record<string, string> = {
       PENDING: 'bg-yellow-50 text-yellow-700 border-yellow-100 hover:bg-yellow-50',
@@ -113,7 +138,7 @@ export default function Dashboard(): React.JSX.Element {
       </Badge>
     )
   }
-
+  console.log('Rendering Dashboard with jobs:', jobs)
   return (
     <TooltipProvider>
       <div className="flex-1 flex flex-col pb-12">
@@ -181,7 +206,7 @@ export default function Dashboard(): React.JSX.Element {
                             <div className="flex flex-col gap-1">
                               <span className="font-mono text-sm">{job?.job_id}</span>
                               {(job.subject_name || job.standard_name || job.stream_name) && (
-                                <span className="text-sm text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {job.subject_name || job.standard_name || job.stream_name}
                                 </span>
                               )}
@@ -234,13 +259,23 @@ export default function Dashboard(): React.JSX.Element {
                                       size="sm"
                                       onClick={() => navigate(`/jobs/${job.job_id}`)}
                                       className="flex items-center gap-2"
+                                      disabled={
+                                        job.state === 'PROCESSING' ||
+                                        job.state === 'PENDING' ||
+                                        job.state === 'RUNNING'
+                                      }
                                     >
                                       <Eye className="h-4 w-4" />
-                                      View Details
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>View job details and processing stages</p>
+                                    <p>
+                                      {job.state === 'PROCESSING' ||
+                                      job.state === 'PENDING' ||
+                                      job.state === 'RUNNING'
+                                        ? 'Job is currently processing'
+                                        : 'View job details and processing stages'}
+                                    </p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -262,17 +297,88 @@ export default function Dashboard(): React.JSX.Element {
                                           )
                                         }
                                         className="flex items-center gap-2"
+                                        disabled={
+                                          job.state === 'PROCESSING' ||
+                                          job.state === 'PENDING' ||
+                                          job.state === 'RUNNING'
+                                        }
                                       >
                                         <FileText className="h-4 w-4" />
-                                        View Report
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>View the quality gate report</p>
+                                      <p>
+                                        {job.state === 'PROCESSING' ||
+                                        job.state === 'PENDING' ||
+                                        job.state === 'RUNNING'
+                                          ? 'Job is currently processing'
+                                          : 'View report'}
+                                      </p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
+
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRerun(job.job_id)}
+                                      className="flex items-center gap-2"
+                                      disabled={
+                                        job.state === 'PROCESSING' ||
+                                        job.state === 'PENDING' ||
+                                        job.state === 'RUNNING'
+                                      }
+                                    >
+                                      <RotateCw className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {job.state === 'PROCESSING' ||
+                                      job.state === 'PENDING' ||
+                                      job.state === 'RUNNING'
+                                        ? 'Job is currently processing'
+                                        : 'Rerun job'}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setShowUpload(true)}
+                                      className="flex items-center gap-2"
+                                      disabled={
+                                        job.state === 'PROCESSING' ||
+                                        job.state === 'PENDING' ||
+                                        job.state === 'RUNNING' ||
+                                        !job.gate_passed
+                                      }
+                                    >
+                                      <Upload className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {job.state === 'PROCESSING' ||
+                                      job.state === 'PENDING' ||
+                                      job.state === 'RUNNING'
+                                        ? 'Job is currently processing'
+                                        : !job.gate_passed
+                                          ? 'Upload is only available for jobs that passed the gate'
+                                          : 'Upload new files'}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           </TableCell>
                         </TableRow>
