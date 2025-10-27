@@ -2,37 +2,46 @@ import { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
+import api from '../lib/axios'
 import { useNavigate } from 'react-router-dom'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
-import { Eye, FileText, RefreshCcw, RotateCw, Upload } from 'lucide-react'
+import { Eye, FileText, RefreshCcw, RotateCw, Upload, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import toast from 'react-hot-toast'
+import { Input } from './ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+
+interface JobCounts {
+  questions: number
+  answers: number
+  unmatched: number
+}
 
 interface Job {
   job_id: string
-  format: 'single' | 'two-file'
-  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED' | 'RUNNING'
+  mode: 'single' | 'two-file'
+  state: 'DONE' | 'FAILED' | 'RUNNING'
   gate_passed: boolean
-  gate_report_url: string
   created_at: string
   updated_at: string
-  report_url: string
-  reason: string | null
-  stream_id: string | null
+  report_url: string | null
+  stream_id: number | null
   stream_name: string | null
-  standard_id: string | null
+  standard_id: number | null
   standard_name: string | null
-  subject_id: string | null
+  subject_id: number | null
   subject_name: string | null
+  upload_state: 'READY' | 'BLOCKED'
+  upload_receipt_url: string | null
+  counts: JobCounts
 }
 
 interface JobsResponse {
   items: Job[]
-  page: number
-  page_size: number
-  total: number
+  next_cursor: string | null
+  limit: number
 }
 
 export default function Dashboard(): React.JSX.Element {
@@ -50,6 +59,96 @@ export default function Dashboard(): React.JSX.Element {
   const [showJobProgress, setShowJobProgress] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string>('')
 
+  // Filter options state
+  const [streams, setStreams] = useState<{ id: string; name: string }[]>([])
+  const [standards, setStandards] = useState<{ id: string; name: string }[]>([])
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([])
+  const [loadingOptions, setLoadingOptions] = useState({
+    streams: false,
+    standards: false,
+    subjects: false
+  })
+  const [filters, setFilters] = useState({
+    state: '',
+    mode: '',
+    stream_id: '',
+    standard_id: '',
+    subject_id: '',
+    searchQuery: ''
+  })
+
+  // We're using the imported api instance from axios
+
+  // Fetch filter options
+  useEffect(() => {
+    const fetchOptions = async (): Promise<void> => {
+      try {
+        setLoadingOptions((prev) => ({ ...prev, streams: true }))
+        const { data: streamsData } = await api.get('/streams')
+        setStreams(streamsData.data || [])
+      } catch (error) {
+        console.error('Failed to fetch streams:', error)
+      } finally {
+        setLoadingOptions((prev) => ({ ...prev, streams: false }))
+      }
+    }
+
+    fetchOptions()
+  }, []) // Fetch streams on mount
+
+  // Watch stream_id for standards
+  useEffect(() => {
+    const fetchStandards = async (): Promise<void> => {
+      if (filters.stream_id && filters.stream_id !== 'all') {
+        try {
+          setLoadingOptions((prev) => ({ ...prev, standards: true }))
+          const { data: standardsData } = await api.get('/standards', {
+            params: {
+              stream_id: filters.stream_id
+            }
+          })
+          setStandards(standardsData.data || [])
+        } catch (error) {
+          console.error('Failed to fetch standards:', error)
+        } finally {
+          setLoadingOptions((prev) => ({ ...prev, standards: false }))
+        }
+      } else {
+        setStandards([])
+        setFilters((prev) => ({ ...prev, standard_id: 'all', subject_id: 'all' }))
+      }
+    }
+
+    fetchStandards()
+  }, [filters.stream_id])
+
+  // Watch standard_id for subjects
+  useEffect(() => {
+    const fetchSubjects = async (): Promise<void> => {
+      if (filters.standard_id && filters.standard_id !== 'all') {
+        try {
+          setLoadingOptions((prev) => ({ ...prev, subjects: true }))
+          const { data: subjectsData } = await api.get('/subjects', {
+            params: {
+              standard_metadata_id: filters.standard_id
+            }
+          })
+          setSubjects(subjectsData.data || [])
+        } catch (error) {
+          console.error('Failed to fetch subjects:', error)
+        } finally {
+          setLoadingOptions((prev) => ({ ...prev, subjects: false }))
+        }
+      } else {
+        setSubjects([])
+        setFilters((prev) => ({ ...prev, subject_id: 'all' }))
+      }
+    }
+
+    fetchSubjects()
+  }, [filters.standard_id])
+
+  // Initialize jobs
   useEffect(() => {
     const init = async (): Promise<void> => {
       const serverInfo = await window.api.getServerInfo()
@@ -60,19 +159,33 @@ export default function Dashboard(): React.JSX.Element {
     }
     init()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]) // Refetch when page changes
+  }, [currentPage, filters]) // Refetch when page or filters change
 
   const fetchJobs = async (): Promise<void> => {
     try {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
+        const params = new URLSearchParams({
+          limit: pageSize.toString()
+        })
+
+        if (filters.state && filters.state !== 'all') params.append('state', filters.state)
+        if (filters.mode && filters.mode !== 'all') params.append('mode', filters.mode)
+        if (filters.stream_id && filters.stream_id !== 'all')
+          params.append('stream_id', filters.stream_id)
+        if (filters.standard_id && filters.standard_id !== 'all')
+          params.append('standard_id', filters.standard_id)
+        if (filters.subject_id && filters.subject_id !== 'all')
+          params.append('subject_id', filters.subject_id)
+        if (filters.searchQuery) params.append('q', filters.searchQuery)
+
         const response = await fetch(
-          `http://127.0.0.1:${serverInfo.port}/jobs?page=${currentPage}&page_size=${pageSize}`
+          `http://127.0.0.1:${serverInfo.port}/dashboard/jobs?${params.toString()}`
         )
         if (response.ok) {
           const data: JobsResponse = await response.json()
           setJobs(data.items || [])
-          setTotal(data.total)
+          setTotal(data.items.length)
         }
       }
     } catch (error) {
@@ -152,22 +265,150 @@ export default function Dashboard(): React.JSX.Element {
         <div className="flex-1 flex justify-center p-4">
           <div className="w-full h-full rounded-lg border bg-card shadow-sm">
             <div className="h-full flex flex-col">
-              <div className="p-4 flex items-center gap-4 border-b">
-                <div className="flex-1">
-                  <h2 className="text-lg font-semibold">Jobs</h2>
+              <div className="p-4 space-y-4 border-b">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <h2 className="text-lg font-semibold">Jobs</h2>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setLoading(true)
+                      fetchJobs()
+                    }}
+                    className="flex items-center gap-1"
+                  >
+                    <RefreshCcw />
+                    Refresh
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setLoading(true)
-                    fetchJobs()
-                  }}
-                  className="flex items-center gap-1"
-                >
-                  <RefreshCcw />
-                  Refresh
-                </Button>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Search jobs..."
+                      value={filters.searchQuery}
+                      onChange={(e) => {
+                        setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
+                        setCurrentPage(1)
+                      }}
+                      className="w-full"
+                    />
+                    {filters.searchQuery && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setFilters((prev) => ({ ...prev, searchQuery: '' }))
+                          setCurrentPage(1)
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <Select
+                    value={filters.state}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, state: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All States</SelectItem>
+                      <SelectItem value="RUNNING">Running</SelectItem>
+                      <SelectItem value="DONE">Done</SelectItem>
+                      <SelectItem value="FAILED">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.mode}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, mode: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Formats</SelectItem>
+
+                      <SelectItem value="single">Single File</SelectItem>
+                      <SelectItem value="two-file">Two Files</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.stream_id}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, stream_id: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingOptions.streams ? 'Loading...' : 'Stream'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Streams</SelectItem>
+                      {streams.map((stream) => (
+                        <SelectItem key={stream.id} value={stream.id}>
+                          {stream.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.standard_id}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, standard_id: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={loadingOptions.standards ? 'Loading...' : 'Standard'}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Standards</SelectItem>
+                      {standards.map((standard) => (
+                        <SelectItem key={standard.id} value={standard.id}>
+                          {standard.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.subject_id}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, subject_id: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={loadingOptions.subjects ? 'Loading...' : 'Subject'}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Subjects</SelectItem>
+                      {subjects.map((subject) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="overflow-auto">
                 <Table>
@@ -218,14 +459,12 @@ export default function Dashboard(): React.JSX.Element {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {job.format && (
-                              <Badge
-                                variant="outline"
-                                className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
-                              >
-                                {job.format.replace('-', ' ')}
-                              </Badge>
-                            )}
+                            <Badge
+                              variant="outline"
+                              className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
+                            >
+                              {job.mode?.replace('-', ' ')}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             {
@@ -259,20 +498,14 @@ export default function Dashboard(): React.JSX.Element {
                                       size="sm"
                                       onClick={() => navigate(`/jobs/${job.job_id}`)}
                                       className="flex items-center gap-2"
-                                      disabled={
-                                        job.state === 'PROCESSING' ||
-                                        job.state === 'PENDING' ||
-                                        job.state === 'RUNNING'
-                                      }
+                                      disabled={job.state === 'RUNNING'}
                                     >
                                       <Eye className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p>
-                                      {job.state === 'PROCESSING' ||
-                                      job.state === 'PENDING' ||
-                                      job.state === 'RUNNING'
+                                      {job.state === 'RUNNING'
                                         ? 'Job is currently processing'
                                         : 'View job details and processing stages'}
                                     </p>
@@ -289,28 +522,22 @@ export default function Dashboard(): React.JSX.Element {
                                         size="sm"
                                         onClick={() =>
                                           handleViewReport(
-                                            job.gate_report_url.replace(
+                                            job.report_url?.replace(
                                               /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
                                               ''
-                                            ),
+                                            ) || '',
                                             `Report for ${job.job_id}`
                                           )
                                         }
                                         className="flex items-center gap-2"
-                                        disabled={
-                                          job.state === 'PROCESSING' ||
-                                          job.state === 'PENDING' ||
-                                          job.state === 'RUNNING'
-                                        }
+                                        disabled={job.state === 'RUNNING'}
                                       >
                                         <FileText className="h-4 w-4" />
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
                                       <p>
-                                        {job.state === 'PROCESSING' ||
-                                        job.state === 'PENDING' ||
-                                        job.state === 'RUNNING'
+                                        {job.state === 'RUNNING'
                                           ? 'Job is currently processing'
                                           : 'View report'}
                                       </p>
@@ -327,20 +554,14 @@ export default function Dashboard(): React.JSX.Element {
                                       size="sm"
                                       onClick={() => handleRerun(job.job_id)}
                                       className="flex items-center gap-2"
-                                      disabled={
-                                        job.state === 'PROCESSING' ||
-                                        job.state === 'PENDING' ||
-                                        job.state === 'RUNNING'
-                                      }
+                                      disabled={job.state === 'RUNNING'}
                                     >
                                       <RotateCw className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p>
-                                      {job.state === 'PROCESSING' ||
-                                      job.state === 'PENDING' ||
-                                      job.state === 'RUNNING'
+                                      {job.state === 'RUNNING'
                                         ? 'Job is currently processing'
                                         : 'Rerun job'}
                                     </p>
@@ -356,21 +577,14 @@ export default function Dashboard(): React.JSX.Element {
                                       size="sm"
                                       onClick={() => setShowUpload(true)}
                                       className="flex items-center gap-2"
-                                      disabled={
-                                        job.state === 'PROCESSING' ||
-                                        job.state === 'PENDING' ||
-                                        job.state === 'RUNNING' ||
-                                        !job.gate_passed
-                                      }
+                                      disabled={job.upload_state === 'BLOCKED'}
                                     >
                                       <Upload className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     <p>
-                                      {job.state === 'PROCESSING' ||
-                                      job.state === 'PENDING' ||
-                                      job.state === 'RUNNING'
+                                      {job.state === 'RUNNING'
                                         ? 'Job is currently processing'
                                         : !job.gate_passed
                                           ? 'Upload is only available for jobs that passed the gate'
