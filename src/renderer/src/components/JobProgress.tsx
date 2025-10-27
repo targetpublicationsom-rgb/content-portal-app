@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Badge } from './ui/badge'
+import { Clock, CheckCircle } from 'lucide-react'
 
 interface Stage {
   name: string
@@ -215,7 +216,6 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
       </Badge>
     )
   }
-
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
@@ -241,32 +241,66 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
                 </div>
               </div>
 
-              <div className="border rounded-lg p-4 space-y-3">
-                <div className="font-medium">Stages</div>
-                {jobStatus.stages.map((stage) => (
-                  <div
-                    key={stage.name}
-                    className="flex items-center justify-between p-3 border rounded-md bg-card"
-                  >
-                    <div className="space-y-1">
-                      <div className="font-medium">{stage.name}</div>
-                      <div className="text-sm text-muted-foreground space-y-0.5">
-                        {stage.started_at && (
-                          <div>Started: {new Date(stage.started_at).toLocaleTimeString()}</div>
-                        )}
-                        {stage.ended_at && (
-                          <div>Ended: {new Date(stage.ended_at).toLocaleTimeString()}</div>
-                        )}
-                        {stage.metrics && (
-                          <div>Duration: {stage.metrics.duration_sec.toFixed(1)}s</div>
-                        )}
+              <div className="border rounded-lg p-4">
+                <div className="font-medium mb-4">Stages</div>
+                <div className="space-y-0 relative ml-3">
+                  {/* Timeline line */}
+                  <div className="absolute left-0 top-4 bottom-4 border-l-2 border-border" />
+
+                  {jobStatus.stages.map((stage) => {
+                    return (
+                      <div key={stage.name} className="relative pl-4 pb-1 last:pb-0">
+                        {/* Timeline dot */}
+                        <div
+                          className={`absolute h-3 w-3 -translate-x-1/2 left-px top-[18px] rounded-full border-2 bg-background ${
+                            stage.status === 'running'
+                              ? 'border-blue-500'
+                              : stage.status === 'ok'
+                                ? 'border-green-500'
+                                : stage.status === 'error'
+                                  ? 'border-red-500'
+                                  : 'border-gray-300'
+                          }`}
+                        />
+
+                        {/* Content */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2.5">
+                            <div>
+                              <div className="font-medium">{stage.name}</div>
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                                <span>{getStatusBadge(stage.status)}</span>
+                                {stage.metrics ? (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    <span>Duration: {stage.metrics.duration_sec.toFixed(1)}s</span>
+                                  </div>
+                                ) : (
+                                  stage?.started_at && (
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="h-3.5 w-3.5" />
+                                      <span>Duration: {stage?.started_at}s</span>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-sm text-muted-foreground space-y-1 pl-11">
+                            {stage.ended_at && (
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                <span>
+                                  Completed {new Date(stage.ended_at).toLocaleTimeString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      {getStatusBadge(stage.status)}
-                    </div>
-                  </div>
-                ))}
+                    )
+                  })}
+                </div>
               </div>
             </>
           ) : (
