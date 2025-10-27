@@ -117,4 +117,10 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Keep scrollbar gutter stable to avoid layout shift when popovers
+     or select dropdowns open/close. This prevents UI from jumping. */
+  html {
+    scrollbar-gutter: stable;
+  }
 }

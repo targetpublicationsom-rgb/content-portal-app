@@ -218,7 +218,12 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="max-w-2xl"
+        onInteractOutside={(e) => {
+          e.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Job Progress</DialogTitle>
         </DialogHeader>

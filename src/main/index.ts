@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain } from 'electron'
 import { spawn, execSync, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -12,6 +12,7 @@ let tray: Tray | null = null
 let serverProcess: ChildProcessWithoutNullStreams | null = null
 let serverRunning = false
 let isQuitting = false
+const DEFAULT_PORT = import.meta.env.VITE_DEFAULT_PORT || 8000
 
 // --- 🔥 Start Python Server ---
 async function startPythonServer(): Promise<void> {
@@ -242,7 +243,7 @@ ipcMain.handle('get-server-info', () => {
       return data
     } else {
       console.warn('[Main] Server info file not found:', filePath)
-      return { port: 5173 }
+      return { port: DEFAULT_PORT }
     }
   } catch (error) {
     console.error('[Main] Error reading server info:', error)
