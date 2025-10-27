@@ -244,8 +244,23 @@ export default function UploadForm({
         formData.append('file_answer', data.answerFile)
       }
 
+      // Add taxonomy fields
+      // Stream
+      formData.append('stream_id', data.stream)
+      const selectedStream = streams.find((s) => s.id == data.stream)
+      formData.append('stream_name', selectedStream?.name || '')
+
+      // Standard
+      formData.append('standard_id', data.standard)
+      const selectedStandard = standards.find((s) => s.id == data.standard)
+      formData.append('standard_name', selectedStandard?.name || '')
+
+      // Subject
+      formData.append('subject_id', data.subject)
+      const selectedSubject = subjects.find((s) => s.id == data.subject)
+      formData.append('subject_name', selectedSubject?.name || '')
       // Submit the job
-      const response = await postJob(formData)
+      // const response = await postJob(formData)
       // Reset form and close dialog
       form.reset()
       onClose()
