@@ -197,6 +197,17 @@ ipcMain.handle('read-html-file', async (_, filePath: string) => {
   }
 })
 
+// Handle log file reading
+ipcMain.handle('read-log-file', async (_, filePath: string) => {
+  try {
+    const content = await fsPromises.readFile(filePath, 'utf-8')
+    return content
+  } catch (error) {
+    console.error('Error reading log file:', error)
+    throw error
+  }
+})
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
 

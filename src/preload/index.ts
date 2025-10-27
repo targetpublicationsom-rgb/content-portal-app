@@ -11,7 +11,11 @@ const api = {
 
   // Read HTML file content
   readHtmlFile: (filePath: string): Promise<string> =>
-    ipcRenderer.invoke('read-html-file', filePath)
+    ipcRenderer.invoke('read-html-file', filePath),
+
+  // Read log file content
+  readLogFile: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('read-log-file', filePath)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

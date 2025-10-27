@@ -9,6 +9,7 @@ interface API {
   getServerInfo: () => Promise<ServerInfo | null>
   isServerRunning: () => Promise<boolean>
   readHtmlFile: (filePath: string) => Promise<string>
+  readLogFile: (filePath: string) => Promise<string>
 }
 
 declare global {

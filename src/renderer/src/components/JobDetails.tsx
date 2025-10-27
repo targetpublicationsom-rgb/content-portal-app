@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileText } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 interface Stage {
   name: string
@@ -39,6 +40,10 @@ export default function JobDetails(): React.JSX.Element {
   const navigate = useNavigate()
   const [job, setJob] = useState<JobDetails | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showLogModal, setShowLogModal] = useState(false)
+  const [selectedLog, setSelectedLog] = useState<{ content: string; stageName: string } | null>(
+    null
+  )
 
   useEffect(() => {
     const fetchJobDetails = async (): Promise<void> => {
@@ -183,13 +188,16 @@ export default function JobDetails(): React.JSX.Element {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Ended At
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Logs
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {job.stages.map((stage, index) => (
                       <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {stage.name}
+                          <div className="flex items-center">{stage.name}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <Badge
@@ -212,6 +220,26 @@ export default function JobDetails(): React.JSX.Element {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(stage.ended_at).toLocaleString()}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {stage.log_path && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="p-0 h-auto"
+                              onClick={async () => {
+                                try {
+                                  const content = await window.api.readLogFile(stage.log_path)
+                                  setSelectedLog({ content, stageName: stage.name })
+                                  setShowLogModal(true)
+                                } catch (error) {
+                                  console.error('Failed to read log file:', error)
+                                }
+                              }}
+                            >
+                              <FileText className="h-4 w-4 text-gray-500 hover:text-gray-700" />
+                            </Button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -221,6 +249,20 @@ export default function JobDetails(): React.JSX.Element {
           </div>
         </div>
       </div>
+
+      {/* Log Modal */}
+      <Dialog open={showLogModal} onOpenChange={setShowLogModal}>
+        <DialogContent className="max-w-[800px] h-[80vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>Log: {selectedLog?.stageName}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto">
+            <pre className="h-full p-4 bg-gray-50 rounded-lg text-sm whitespace-pre-wrap overflow-y-auto">
+              {selectedLog?.content}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
