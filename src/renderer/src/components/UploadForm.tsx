@@ -260,7 +260,7 @@ export default function UploadForm({
       const selectedSubject = subjects.find((s) => s.id == data.subject)
       formData.append('subject_name', selectedSubject?.name || '')
       // Submit the job
-      // const response = await postJob(formData)
+      const response = await postJob(formData)
       // Reset form and close dialog
       form.reset()
       onClose()
