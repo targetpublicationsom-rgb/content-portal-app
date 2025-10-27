@@ -5,7 +5,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
-import { log } from 'console'
 
 interface Job {
   job_id: string
@@ -161,7 +160,7 @@ export default function Dashboard(): React.JSX.Element {
                     </TableRow>
                   ) : jobs.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center">
+                      <TableCell colSpan={12} className="h-24 text-center">
                         <div className="flex flex-col items-center justify-center text-muted-foreground">
                           <p>No jobs found</p>
                           <p className="text-sm">Upload content to start processing</p>

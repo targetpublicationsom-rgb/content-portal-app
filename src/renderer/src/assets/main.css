@@ -123,4 +123,11 @@
   html {
     scrollbar-gutter: stable;
   }
+  body[data-scroll-locked] {
+      padding-right: var(--removed-body-scroll-bar-size, 0px);
+  }
+  [data-radix-scroll-lock] {
+    overflow: auto !important;
+  }
+
 }
