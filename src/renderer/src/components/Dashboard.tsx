@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
-import { Eye, FileText, RefreshCcw, RotateCw, Upload, X } from 'lucide-react'
+import { Eye, FileText, RefreshCcw, RotateCw, Upload, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import toast from 'react-hot-toast'
 import { Input } from './ui/input'
@@ -58,6 +58,7 @@ export default function Dashboard(): React.JSX.Element {
   const [reportTitle, setReportTitle] = useState('')
   const [showJobProgress, setShowJobProgress] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string>('')
+  const [showFilters, setShowFilters] = useState(true)
 
   // Filter options state
   const [streams, setStreams] = useState<{ id: string; name: string }[]>([])
@@ -307,7 +308,7 @@ export default function Dashboard(): React.JSX.Element {
         <div className="flex-1 flex justify-center p-4">
           <div className="w-full h-full rounded-lg border bg-card shadow-sm">
             <div className="h-full flex flex-col">
-              <div className="p-4 border-b">
+              <div className="p-4 border-b bg-muted/30">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold">Jobs</h2>
                   <div className="flex items-center gap-2">
@@ -346,210 +347,233 @@ export default function Dashboard(): React.JSX.Element {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  {/* Search and Status Filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="md:col-span-1 flex gap-2">
-                      <Input
-                        placeholder="Search jobs..."
-                        value={filters.searchQuery}
-                        onChange={(e) => {
-                          setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
+                <div className="space-y-2">
+                  {/* Search Bar with State & Format */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Search jobs by ID, taxonomy..."
+                      value={filters.searchQuery}
+                      onChange={(e) => {
+                        setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
+                        setCurrentPage(1)
+                      }}
+                      className="flex-1"
+                    />
+                    {filters.searchQuery && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setFilters((prev) => ({ ...prev, searchQuery: '' }))
                           setCurrentPage(1)
                         }}
-                        className="flex-1"
-                      />
-                      {filters.searchQuery && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setFilters((prev) => ({ ...prev, searchQuery: '' }))
-                            setCurrentPage(1)
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <div className="w-40">
+                      <Select
+                        value={filters.state}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({ ...prev, state: value }))
+                          setCurrentPage(1)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All States" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All States</SelectItem>
+                          <SelectItem value="RUNNING">Running</SelectItem>
+                          <SelectItem value="DONE">Done</SelectItem>
+                          <SelectItem value="FAILED">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-
-                    <Select
-                      value={filters.state}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({ ...prev, state: value }))
-                        setCurrentPage(1)
-                      }}
+                    <div className="w-40">
+                      <Select
+                        value={filters.mode}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({ ...prev, mode: value }))
+                          setCurrentPage(1)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All Formats" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Formats</SelectItem>
+                          <SelectItem value="single">Single File</SelectItem>
+                          <SelectItem value="two-file">Two Files</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowFilters(!showFilters)}
+                      className="shrink-0"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All States" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All States</SelectItem>
-                        <SelectItem value="RUNNING">Running</SelectItem>
-                        <SelectItem value="DONE">Done</SelectItem>
-                        <SelectItem value="FAILED">Failed</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select
-                      value={filters.mode}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({ ...prev, mode: value }))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Formats" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Formats</SelectItem>
-                        <SelectItem value="single">Single File</SelectItem>
-                        <SelectItem value="two-file">Two Files</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
                   </div>
 
-                  {/* Taxonomy Filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <Select
-                      value={filters.stream_id}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          stream_id: value,
-                          standard_id: '',
-                          subject_id: ''
-                        }))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Streams</SelectItem>
-                        {streams.map((stream) => (
-                          <SelectItem key={stream.id} value={stream.id}>
-                            {stream.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {/* Collapsible Taxonomy Filters */}
+                  {showFilters && (
+                    <div className="space-y-2 pt-1">
+                      {/* Row: Stream, Board, Medium */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={filters.stream_id}
+                            onValueChange={(value) => {
+                              setFilters((prev) => ({
+                                ...prev,
+                                stream_id: value,
+                                standard_id: '',
+                                subject_id: ''
+                              }))
+                              setCurrentPage(1)
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue
+                                placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Streams</SelectItem>
+                              {streams.map((stream) => (
+                                <SelectItem key={stream.id} value={stream.id}>
+                                  {stream.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={filters.board_id}
+                            onValueChange={(value) => {
+                              setFilters((prev) => ({
+                                ...prev,
+                                board_id: value,
+                                standard_id: '',
+                                subject_id: ''
+                              }))
+                              setCurrentPage(1)
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue
+                                placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Boards</SelectItem>
+                              {boards.map((board) => (
+                                <SelectItem key={board.id} value={board.id}>
+                                  {board.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={filters.medium_id}
+                            onValueChange={(value) => {
+                              setFilters((prev) => ({
+                                ...prev,
+                                medium_id: value,
+                                standard_id: '',
+                                subject_id: ''
+                              }))
+                              setCurrentPage(1)
+                            }}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue
+                                placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Mediums</SelectItem>
+                              {mediums.map((medium) => (
+                                <SelectItem key={medium.id} value={medium.id}>
+                                  {medium.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
 
-                    <Select
-                      value={filters.board_id}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          board_id: value,
-                          standard_id: '',
-                          subject_id: ''
-                        }))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Boards</SelectItem>
-                        {boards.map((board) => (
-                          <SelectItem key={board.id} value={board.id}>
-                            {board.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select
-                      value={filters.medium_id}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          medium_id: value,
-                          standard_id: '',
-                          subject_id: ''
-                        }))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Mediums</SelectItem>
-                        {mediums.map((medium) => (
-                          <SelectItem key={medium.id} value={medium.id}>
-                            {medium.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select
-                      value={filters.standard_id}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({ ...prev, standard_id: value, subject_id: '' }))
-                        setCurrentPage(1)
-                      }}
-                      disabled={
-                        loadingOptions.standards ||
-                        !filters.stream_id ||
-                        filters.stream_id === 'all' ||
-                        !filters.medium_id ||
-                        filters.medium_id === 'all' ||
-                        !filters.board_id ||
-                        filters.board_id === 'all'
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Standards</SelectItem>
-                        {standards.map((standard) => (
-                          <SelectItem key={standard.id} value={standard.id}>
-                            {standard.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select
-                      value={filters.subject_id}
-                      onValueChange={(value) => {
-                        setFilters((prev) => ({ ...prev, subject_id: value }))
-                        setCurrentPage(1)
-                      }}
-                      disabled={
-                        loadingOptions.subjects ||
-                        !filters.standard_id ||
-                        filters.standard_id === 'all'
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Subjects</SelectItem>
-                        {subjects.map((subject) => (
-                          <SelectItem key={subject.id} value={subject.id}>
-                            {subject.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      {/* Row: Standard & Subject */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={filters.standard_id}
+                            onValueChange={(value) => {
+                              setFilters((prev) => ({ ...prev, standard_id: value, subject_id: '' }))
+                              setCurrentPage(1)
+                            }}
+                            disabled={
+                              loadingOptions.standards ||
+                              !filters.stream_id ||
+                              filters.stream_id === 'all' ||
+                              !filters.medium_id ||
+                              filters.medium_id === 'all' ||
+                              !filters.board_id ||
+                              filters.board_id === 'all'
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue
+                                placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Standards</SelectItem>
+                              {standards.map((standard) => (
+                                <SelectItem key={standard.id} value={standard.id}>
+                                  {standard.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={filters.subject_id}
+                            onValueChange={(value) => {
+                              setFilters((prev) => ({ ...prev, subject_id: value }))
+                              setCurrentPage(1)
+                            }}
+                            disabled={
+                              loadingOptions.subjects ||
+                              !filters.standard_id ||
+                              filters.standard_id === 'all'
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue
+                                placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Subjects</SelectItem>
+                              {subjects.map((subject) => (
+                                <SelectItem key={subject.id} value={subject.id}>
+                                  {subject.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="overflow-auto">
