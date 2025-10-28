@@ -4,6 +4,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import * as fs from 'fs'
 import * as fsPromises from 'fs/promises'
+import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
 
@@ -12,7 +13,7 @@ let tray: Tray | null = null
 let serverProcess: ChildProcessWithoutNullStreams | null = null
 let serverRunning = false
 let isQuitting = false
-const DEFAULT_PORT = import.meta.env.VITE_DEFAULT_PORT || 8000
+const DEFAULT_PORT = 6284
 
 // --- 🔥 Start Python Server ---
 async function startPythonServer(): Promise<void> {
@@ -103,7 +104,9 @@ async function stopPythonServer(): Promise<void> {
     if (process.platform === 'win32') {
       execSync(`taskkill /PID ${serverProcess.pid} /T /F`)
     } else {
-      process.kill(serverProcess.pid, 'SIGTERM')
+      if (serverProcess.pid) {
+        process.kill(serverProcess.pid, 'SIGTERM')
+      }
     }
   } catch (err) {
     console.warn('[Main] Error while stopping server:', err)
@@ -124,7 +127,9 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webSecurity: false
+      webSecurity: false,
+      nodeIntegration: false,
+      contextIsolation: true
     }
   })
 
@@ -146,10 +151,42 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Enhanced error handling for renderer loading
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main] Failed to load renderer: ${errorDescription} (${errorCode}) - URL: ${validatedURL}`)
+  })
+
+  // Load the renderer content
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    // Development: load from Vite dev server
+    console.log('[Main] Loading renderer from dev server:', process.env['ELECTRON_RENDERER_URL'])
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']).catch((err) => {
+      console.error('[Main] Failed to load dev server:', err)
+    })
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    // Production: load from built files
+    const rendererPath = join(__dirname, '../renderer/index.html')
+    console.log('[Main] Loading renderer from file:', rendererPath)
+    
+    // Check if the file exists before trying to load it
+    if (fs.existsSync(rendererPath)) {
+      // Use loadFile for cross-platform compatibility
+      mainWindow.loadFile(rendererPath).catch((err) => {
+        console.error('[Main] Failed to load renderer file:', err)
+        // Fallback: try with file URL
+        const fileUrl = pathToFileURL(rendererPath).href
+        console.log('[Main] Attempting fallback with file URL:', fileUrl)
+        mainWindow?.loadURL(fileUrl)
+      })
+    } else {
+      console.error('[Main] Renderer file not found:', rendererPath)
+      // Try alternative path (in case of different build output)
+      const altPath = join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'renderer', 'index.html')
+      if (fs.existsSync(altPath)) {
+        console.log('[Main] Using alternative renderer path:', altPath)
+        mainWindow.loadFile(altPath)
+      }
+    }
   }
 }
 

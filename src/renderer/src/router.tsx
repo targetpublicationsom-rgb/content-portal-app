@@ -1,10 +1,11 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createHashRouter } from 'react-router-dom'
 import Layout from './layouts/Layout'
 import Dashboard from './components/Dashboard'
 import Jobs from './components/Jobs'
 import JobDetails from './components/JobDetails'
 
-export const router = createBrowserRouter([
+// Use HashRouter for better Electron compatibility
+export const router = createHashRouter([
   {
     path: '/',
     element: <Layout />,
