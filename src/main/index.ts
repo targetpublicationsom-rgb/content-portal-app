@@ -153,7 +153,7 @@ function createWindow(): void {
 
   // Enhanced error handling for renderer loading
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[Main] Failed to load renderer: ${errorDescription} (${errorCode}) - URL: ${validatedURL}`)
+    console.error(`[Main] Failed to load renderer: ${errorDescription} (${errorCode}) - URL: ${validatedURL} ${event}`)
   })
 
   // Load the renderer content
