@@ -1,5 +1,16 @@
 import api from '../lib/axios'
-import type { JobsResponse, JobDetails } from '../types'
+import type { JobsResponse, JobDetails, DashboardStats } from '../types'
+
+/**
+ * Fetch dashboard stats
+ */
+export const fetchDashboardStats = async (serverPort: number): Promise<DashboardStats> => {
+  const response = await fetch(`http://127.0.0.1:${serverPort}/dashboard/stats`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard stats')
+  }
+  return response.json()
+}
 
 /**
  * Fetch jobs with optional filters and pagination
