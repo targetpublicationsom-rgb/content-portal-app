@@ -3,30 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Badge } from './ui/badge'
 import { Clock, CheckCircle } from 'lucide-react'
-
-interface Stage {
-  name: string
-  status: 'ok' | 'error' | 'running' | 'pending'
-  started_at?: string
-  ended_at?: string
-  metrics?: {
-    duration_sec: number
-  }
-  log_path?: string
-}
-
-interface JobStatus {
-  job_id: string
-  format: 'single' | 'two-file'
-  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
-  gate_passed?: boolean
-  gate_report_url?: string
-  stages: Stage[]
-  created_at: string
-  updated_at: string
-  workspace?: string
-  report_url?: string
-}
+import type { JobStatus, Stage } from '../types'
 
 interface JobProgressProps {
   open: boolean

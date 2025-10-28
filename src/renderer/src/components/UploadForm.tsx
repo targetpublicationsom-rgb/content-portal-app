@@ -6,8 +6,9 @@ import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Form, FormField, FormItem, FormMessage } from './ui/form'
-import api from '../lib/axios'
 import toast from 'react-hot-toast'
+import { useTaxonomyData } from '../hooks'
+import { createJob } from '../services'
 
 const formSchema = z
   .object({
@@ -49,16 +50,6 @@ type FormValues = z.infer<typeof formSchema>
 interface UploadFormProps {
   open: boolean
   onClose: () => void
-}
-
-interface Option {
-  id: string
-  name: string
-}
-
-interface UploadFormProps {
-  open: boolean
-  onClose: () => void
   onSuccess?: (jobId: string) => void
 }
 
@@ -80,16 +71,18 @@ export default function UploadForm({
       answerFile: undefined
     }
   })
-  const [streams, setStreams] = useState<Option[]>([])
-  const [streamsLoading, setStreamsLoading] = useState<boolean>(false)
-  const [boards, setBoards] = useState<Option[]>([])
-  const [boardsLoading, setBoardsLoading] = useState<boolean>(false)
-  const [mediums, setMediums] = useState<Option[]>([])
-  const [mediumsLoading, setMediumsLoading] = useState<boolean>(false)
-  const [standards, setStandards] = useState<Option[]>([])
-  const [standardsLoading, setStandardsLoading] = useState<boolean>(false)
-  const [subjects, setSubjects] = useState<Option[]>([])
-  const [subjectsLoading, setSubjectsLoading] = useState<boolean>(false)
+
+  // Use the custom hook for taxonomy data
+  const {
+    streams,
+    boards,
+    mediums,
+    standards,
+    subjects,
+    loadingOptions,
+    loadStandards,
+    loadSubjects
+  } = useTaxonomyData()
 
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, boolean>>({
@@ -99,55 +92,19 @@ export default function UploadForm({
     subject: false,
     networkError: false
   })
+
+  // Reset form when dialog closes
   useEffect(() => {
-    const resetAndLoad = async (): Promise<void> => {
-      if (!open) {
-        form.reset()
-        setErrors({
-          stream: false,
-          medium: false,
-          standard: false,
-          subject: false,
-          networkError: false
-        })
-        return
-      }
-
-      try {
-        setStreamsLoading(true)
-        const { data: streamsData } = await api.get('/streams')
-        setStreams(streamsData?.data)
-      } catch (e) {
-        console.error('fetchStreams', e)
-        setErrors((prev) => ({ ...prev, networkError: true }))
-      } finally {
-        setStreamsLoading(false)
-      }
-
-      try {
-        setBoardsLoading(true)
-        const { data: boardsData } = await api.get('/boards')
-        setBoards(boardsData?.data)
-      } catch (e) {
-        console.error('fetchBoards', e)
-        setErrors((prev) => ({ ...prev, networkError: true }))
-      } finally {
-        setBoardsLoading(false)
-      }
-
-      try {
-        setMediumsLoading(true)
-        const { data: mediumsData } = await api.get('/mediums')
-        setMediums(mediumsData?.data)
-      } catch (e) {
-        console.error('fetchMediums', e)
-        setErrors((prev) => ({ ...prev, networkError: true }))
-      } finally {
-        setMediumsLoading(false)
-      }
+    if (!open) {
+      form.reset()
+      setErrors({
+        stream: false,
+        medium: false,
+        standard: false,
+        subject: false,
+        networkError: false
+      })
     }
-
-    resetAndLoad()
   }, [open, form])
 
   // Watch form values for standards
@@ -156,81 +113,19 @@ export default function UploadForm({
   const boardValue = form.watch('board')
 
   useEffect(() => {
-    const fetchStandards = async (): Promise<void> => {
-      if (streamValue && mediumValue) {
-        setStandardsLoading(true)
-        try {
-          const { data: standardsData } = await api.get<{ data: Option[] }>('/standards', {
-            params: {
-              stream_id: streamValue,
-              medium_id: mediumValue,
-              board_id: boardValue
-            }
-          })
-          setStandards(standardsData.data)
-        } catch {
-          setErrors((prev) => ({ ...prev, networkError: true }))
-        } finally {
-          setStandardsLoading(false)
-        }
-      } else {
-        setStandards([])
-        form.setValue('standard', '')
-        form.setValue('subject', '')
-      }
+    if (streamValue && mediumValue && boardValue) {
+      loadStandards(streamValue, boardValue, mediumValue)
     }
-
-    fetchStandards()
-  }, [streamValue, mediumValue, boardValue, form])
+  }, [streamValue, mediumValue, boardValue, loadStandards])
 
   // Watch form value for subjects
   const standardValue = form.watch('standard')
 
   useEffect(() => {
-    const fetchSubjects = async (): Promise<void> => {
-      if (standardValue) {
-        setSubjectsLoading(true)
-        try {
-          const { data: subjectsData } = await api.get<{ data: Option[] }>('/subjects', {
-            params: { standard_metadata_id: standardValue }
-          })
-          setSubjects(subjectsData.data)
-        } catch {
-          setErrors((prev) => ({ ...prev, networkError: true }))
-        } finally {
-          setSubjectsLoading(false)
-        }
-      } else {
-        setSubjects([])
-        form.setValue('subject', '')
-      }
+    if (standardValue) {
+      loadSubjects(standardValue)
     }
-
-    fetchSubjects()
-  }, [standardValue, form])
-
-  const postJob = async (formData: FormData): Promise<any> => {
-    try {
-      const serverInfo = await window.api.getServerInfo()
-      if (serverInfo?.port) {
-        const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs`, {
-          method: 'POST',
-          body: formData
-        })
-
-        if (!response.ok) {
-          toast.error('Something went wrong!')
-          throw new Error('Failed to create job')
-        }
-        toast.success('Job created Successfully!')
-        return response.json()
-      }
-    } catch (error) {
-      console.error('Failed to create job:', error)
-      throw error
-    }
-    return null
-  }
+  }, [standardValue, loadSubjects])
 
   const onSubmit = async (data: FormValues): Promise<void> => {
     try {
@@ -259,15 +154,23 @@ export default function UploadForm({
       formData.append('subject_id', data.subject)
       const selectedSubject = subjects.find((s) => s.id == data.subject)
       formData.append('subject_name', selectedSubject?.name || '')
-      // Submit the job
-      const response = await postJob(formData)
+
+      // Submit the job using the service
+      const response = await createJob(formData)
+
+      toast.success('Job created successfully!')
+
       // Reset form and close dialog
       form.reset()
       onClose()
+
       // Trigger refresh of jobs list
-      if (response.job_id) onSuccess?.(response?.job_id)
+      if (response.job_id) {
+        onSuccess?.(response.job_id)
+      }
     } catch (e) {
       console.error('submit', e)
+      toast.error('Failed to create job. Please try again.')
       setErrors((prev) => ({ ...prev, networkError: true }))
     } finally {
       setLoading(false)
@@ -301,11 +204,11 @@ export default function UploadForm({
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
-                          disabled={streamsLoading}
+                          disabled={loadingOptions.streams}
                         >
                           <SelectTrigger className="w-full h-10">
                             <SelectValue
-                              placeholder={streamsLoading ? 'Loading...' : 'Select stream'}
+                              placeholder={loadingOptions.streams ? 'Loading...' : 'Select stream'}
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -330,11 +233,11 @@ export default function UploadForm({
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
-                          disabled={boardsLoading}
+                          disabled={loadingOptions.boards}
                         >
                           <SelectTrigger className="w-full h-10">
                             <SelectValue
-                              placeholder={boardsLoading ? 'Loading...' : 'Select board'}
+                              placeholder={loadingOptions.boards ? 'Loading...' : 'Select board'}
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -359,11 +262,11 @@ export default function UploadForm({
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
-                          disabled={mediumsLoading}
+                          disabled={loadingOptions.mediums}
                         >
                           <SelectTrigger className="w-full h-10">
                             <SelectValue
-                              placeholder={mediumsLoading ? 'Loading...' : 'Select medium'}
+                              placeholder={loadingOptions.mediums ? 'Loading...' : 'Select medium'}
                             />
                           </SelectTrigger>
                           <SelectContent>
@@ -391,7 +294,7 @@ export default function UploadForm({
                           value={field.value}
                           onValueChange={field.onChange}
                           disabled={
-                            standardsLoading ||
+                            loadingOptions.standards ||
                             !form.getValues('stream') ||
                             !form.getValues('medium')
                           }
@@ -399,7 +302,7 @@ export default function UploadForm({
                           <SelectTrigger className="w-full h-10">
                             <SelectValue
                               placeholder={
-                                standardsLoading
+                                loadingOptions.standards
                                   ? 'Loading...'
                                   : !form.getValues('stream') || !form.getValues('medium')
                                     ? 'Select stream and medium first'
@@ -428,12 +331,12 @@ export default function UploadForm({
                         <Select
                           value={field.value}
                           onValueChange={field.onChange}
-                          disabled={subjectsLoading || !form.getValues('standard')}
+                          disabled={loadingOptions.subjects || !form.getValues('standard')}
                         >
                           <SelectTrigger className="w-full h-10">
                             <SelectValue
                               placeholder={
-                                subjectsLoading
+                                loadingOptions.subjects
                                   ? 'Loading...'
                                   : !form.getValues('standard')
                                     ? 'Select standard first'

@@ -2,47 +2,27 @@ import { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
-import api from '../lib/axios'
 import { useNavigate } from 'react-router-dom'
 import UploadForm from './UploadForm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import JobProgress from './JobProgress'
-import { Eye, FileText, RefreshCcw, RotateCw, Upload, X, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  Eye,
+  FileText,
+  RefreshCcw,
+  RotateCw,
+  Upload,
+  X,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import toast from 'react-hot-toast'
 import { Input } from './ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-
-interface JobCounts {
-  questions: number
-  answers: number
-  unmatched: number
-}
-
-interface Job {
-  job_id: string
-  mode: 'single' | 'two-file'
-  state: 'DONE' | 'FAILED' | 'RUNNING'
-  gate_passed: boolean
-  created_at: string
-  updated_at: string
-  report_url: string | null
-  stream_id: number | null
-  stream_name: string | null
-  standard_id: number | null
-  standard_name: string | null
-  subject_id: number | null
-  subject_name: string | null
-  upload_state: 'READY' | 'BLOCKED'
-  upload_receipt_url: string | null
-  counts: JobCounts
-}
-
-interface JobsResponse {
-  items: Job[]
-  next_cursor: string | null
-  limit: number
-}
+import type { Job, JobsResponse, TaxonomyFilters } from '../types'
+import { useTaxonomyData } from '../hooks'
+import { DEFAULT_PAGE_SIZE } from '../constants'
 
 export default function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
@@ -51,29 +31,28 @@ export default function Dashboard(): React.JSX.Element {
   const [showUpload, setShowUpload] = useState(false)
   const [serverPort, setServerPort] = useState<number>()
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(8)
+  const [pageSize] = useState(DEFAULT_PAGE_SIZE)
   const [total, setTotal] = useState(0)
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState<string>('')
   const [reportTitle, setReportTitle] = useState('')
   const [showJobProgress, setShowJobProgress] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string>('')
-  const [showFilters, setShowFilters] = useState(true)
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Filter options state
-  const [streams, setStreams] = useState<{ id: string; name: string }[]>([])
-  const [boards, setBoards] = useState<{ id: string; name: string }[]>([])
-  const [mediums, setMediums] = useState<{ id: string; name: string }[]>([])
-  const [standards, setStandards] = useState<{ id: string; name: string }[]>([])
-  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([])
-  const [loadingOptions, setLoadingOptions] = useState({
-    streams: false,
-    boards: false,
-    mediums: false,
-    standards: false,
-    subjects: false
-  })
-  const [filters, setFilters] = useState({
+  // Use the custom hook for taxonomy data
+  const {
+    streams,
+    boards,
+    mediums,
+    standards,
+    subjects,
+    loadingOptions,
+    loadStandards,
+    loadSubjects
+  } = useTaxonomyData()
+
+  const [filters, setFilters] = useState<TaxonomyFilters>({
     state: '',
     mode: '',
     stream_id: '',
@@ -84,108 +63,26 @@ export default function Dashboard(): React.JSX.Element {
     searchQuery: ''
   })
 
-  // We're using the imported api instance from axios
-
-  // Fetch filter options
-  useEffect(() => {
-    const fetchOptions = async (): Promise<void> => {
-      // Fetch streams
-      try {
-        setLoadingOptions((prev) => ({ ...prev, streams: true }))
-        const { data: streamsData } = await api.get('/streams')
-        setStreams(streamsData.data || [])
-      } catch (error) {
-        console.error('Failed to fetch streams:', error)
-      } finally {
-        setLoadingOptions((prev) => ({ ...prev, streams: false }))
-      }
-
-      // Fetch boards
-      try {
-        setLoadingOptions((prev) => ({ ...prev, boards: true }))
-        const { data: boardsData } = await api.get('/boards')
-        setBoards(boardsData.data || [])
-      } catch (error) {
-        console.error('Failed to fetch boards:', error)
-      } finally {
-        setLoadingOptions((prev) => ({ ...prev, boards: false }))
-      }
-
-      // Fetch mediums
-      try {
-        setLoadingOptions((prev) => ({ ...prev, mediums: true }))
-        const { data: mediumsData } = await api.get('/mediums')
-        setMediums(mediumsData.data || [])
-      } catch (error) {
-        console.error('Failed to fetch mediums:', error)
-      } finally {
-        setLoadingOptions((prev) => ({ ...prev, mediums: false }))
-      }
-    }
-
-    fetchOptions()
-  }, []) // Fetch initial options on mount
-
   // Watch stream_id, board_id, and medium_id for standards
   useEffect(() => {
-    const fetchStandards = async (): Promise<void> => {
-      if (
-        filters.stream_id &&
-        filters.stream_id !== 'all' &&
-        filters.medium_id &&
-        filters.medium_id !== 'all' &&
-        filters.board_id &&
-        filters.board_id !== 'all'
-      ) {
-        try {
-          setLoadingOptions((prev) => ({ ...prev, standards: true }))
-          const { data: standardsData } = await api.get('/standards', {
-            params: {
-              stream_id: filters.stream_id,
-              medium_id: filters.medium_id,
-              board_id: filters.board_id
-            }
-          })
-          setStandards(standardsData.data || [])
-        } catch (error) {
-          console.error('Failed to fetch standards:', error)
-        } finally {
-          setLoadingOptions((prev) => ({ ...prev, standards: false }))
-        }
-      } else {
-        setStandards([])
-        setFilters((prev) => ({ ...prev, standard_id: '', subject_id: '' }))
-      }
+    if (
+      filters.stream_id &&
+      filters.stream_id !== 'all' &&
+      filters.medium_id &&
+      filters.medium_id !== 'all' &&
+      filters.board_id &&
+      filters.board_id !== 'all'
+    ) {
+      loadStandards(filters.stream_id, filters.board_id, filters.medium_id)
     }
-
-    fetchStandards()
-  }, [filters.stream_id, filters.board_id, filters.medium_id])
+  }, [filters.stream_id, filters.board_id, filters.medium_id, loadStandards])
 
   // Watch standard_id for subjects
   useEffect(() => {
-    const fetchSubjects = async (): Promise<void> => {
-      if (filters.standard_id && filters.standard_id !== 'all') {
-        try {
-          setLoadingOptions((prev) => ({ ...prev, subjects: true }))
-          const { data: subjectsData } = await api.get('/subjects', {
-            params: {
-              standard_metadata_id: filters.standard_id
-            }
-          })
-          setSubjects(subjectsData.data || [])
-        } catch (error) {
-          console.error('Failed to fetch subjects:', error)
-        } finally {
-          setLoadingOptions((prev) => ({ ...prev, subjects: false }))
-        }
-      } else {
-        setSubjects([])
-        setFilters((prev) => ({ ...prev, subject_id: '' }))
-      }
+    if (filters.standard_id && filters.standard_id !== 'all') {
+      loadSubjects(filters.standard_id)
     }
-
-    fetchSubjects()
-  }, [filters.standard_id])
+  }, [filters.standard_id, loadSubjects])
 
   // Initialize jobs
   useEffect(() => {
@@ -193,14 +90,14 @@ export default function Dashboard(): React.JSX.Element {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
         setServerPort(serverInfo.port)
-        fetchJobs()
+        fetchJobsData()
       }
     }
     init()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, filters]) // Refetch when page or filters change
 
-  const fetchJobs = async (): Promise<void> => {
+  const fetchJobsData = async (): Promise<void> => {
     try {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
@@ -269,7 +166,7 @@ export default function Dashboard(): React.JSX.Element {
 
         setActiveJobId(jobId)
         setShowJobProgress(true)
-        fetchJobs()
+        fetchJobsData()
         toast.success('Job rerun started successfully')
       }
     } catch (error) {
@@ -294,7 +191,6 @@ export default function Dashboard(): React.JSX.Element {
       </Badge>
     )
   }
-  console.log('Rendering Dashboard with jobs:', jobs)
   return (
     <TooltipProvider>
       <div className="flex-1 flex flex-col pb-12">
@@ -337,7 +233,7 @@ export default function Dashboard(): React.JSX.Element {
                       size="sm"
                       onClick={() => {
                         setLoading(true)
-                        fetchJobs()
+                        fetchJobsData()
                       }}
                       className="flex items-center gap-1"
                     >
@@ -414,7 +310,11 @@ export default function Dashboard(): React.JSX.Element {
                       onClick={() => setShowFilters(!showFilters)}
                       className="shrink-0"
                     >
-                      {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      {showFilters ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
 
@@ -515,7 +415,11 @@ export default function Dashboard(): React.JSX.Element {
                           <Select
                             value={filters.standard_id}
                             onValueChange={(value) => {
-                              setFilters((prev) => ({ ...prev, standard_id: value, subject_id: '' }))
+                              setFilters((prev) => ({
+                                ...prev,
+                                standard_id: value,
+                                subject_id: ''
+                              }))
                               setCurrentPage(1)
                             }}
                             disabled={
@@ -530,7 +434,9 @@ export default function Dashboard(): React.JSX.Element {
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue
-                                placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
+                                placeholder={
+                                  loadingOptions.standards ? 'Loading...' : 'All Standards'
+                                }
                               />
                             </SelectTrigger>
                             <SelectContent>
@@ -558,7 +464,9 @@ export default function Dashboard(): React.JSX.Element {
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue
-                                placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
+                                placeholder={
+                                  loadingOptions.subjects ? 'Loading...' : 'All Subjects'
+                                }
                               />
                             </SelectTrigger>
                             <SelectContent>
@@ -818,7 +726,7 @@ export default function Dashboard(): React.JSX.Element {
             onSuccess={(jobId) => {
               setActiveJobId(jobId)
               setShowJobProgress(true)
-              fetchJobs()
+              fetchJobsData()
             }}
           />
 
@@ -827,7 +735,7 @@ export default function Dashboard(): React.JSX.Element {
             onClose={() => {
               setShowJobProgress(false)
               setActiveJobId('')
-              fetchJobs()
+              fetchJobsData()
             }}
             jobId={activeJobId}
             serverPort={serverPort || 0}

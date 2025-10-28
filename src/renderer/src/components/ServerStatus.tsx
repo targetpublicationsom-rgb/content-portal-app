@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from './ui/button'
-
-interface ServerInfo {
-  port: number
-}
-
-interface HealthResponse {
-  status: string
-  timestamp?: string
-}
+import type { ServerInfo, HealthResponse } from '../types'
 
 interface JobsResponse {
   jobs: Array<{
@@ -193,7 +185,7 @@ export function ServerStatus(): React.JSX.Element {
           </Button>
 
           {serverInfo && (
-            <Button onClick={() => checkHealth(serverInfo.port)} variant="outline" size="sm">
+            <Button onClick={() => serverInfo && checkHealth(serverInfo.port!)} variant="outline" size="sm">
               Check Health
             </Button>
           )}

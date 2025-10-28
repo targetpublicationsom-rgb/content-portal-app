@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Badge } from './ui/badge'
-
-interface ServerInfo {
-  port?: number
-  status?: string
-}
-
-interface HealthStatus {
-  status: string
-  port?: number
-}
+import type { ServerInfo, HealthStatus } from '../types'
 
 export default function StatusBar(): React.JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)

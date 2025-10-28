@@ -4,41 +4,12 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
-
-interface Stage {
-  name: string
-  status: string
-  started_at: string
-  ended_at: string
-  metrics: {
-    duration_sec: number
-  }
-  log_path: string
-}
-
-interface JobDetails {
-  job_id: string
-  format: 'single' | 'two-file'
-  state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
-  gate_passed: boolean
-  gate_report_url: string
-  created_at: string
-  updated_at: string
-  workspace: string
-  report_url: string
-  stages: Stage[]
-  stream_id: number | null
-  stream_name: string | null
-  standard_id: number | null
-  standard_name: string | null
-  subject_id: number | null
-  subject_name: string | null
-}
+import type { JobDetails as JobDetailsType } from '../types'
 
 export default function JobDetails(): React.JSX.Element {
   const { jobId } = useParams()
   const navigate = useNavigate()
-  const [job, setJob] = useState<JobDetails | null>(null)
+  const [job, setJob] = useState<JobDetailsType | null>(null)
   const [loading, setLoading] = useState(true)
   const [showLogModal, setShowLogModal] = useState(false)
   const [selectedLog, setSelectedLog] = useState<{ content: string; stageName: string } | null>(
@@ -212,13 +183,13 @@ export default function JobDetails(): React.JSX.Element {
                           </Badge>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {stage.metrics.duration_sec.toFixed(1)}s
+                          {stage.metrics?.duration_sec?.toFixed(1)}s
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(stage.started_at).toLocaleString()}
+                          {stage.started_at && new Date(stage.started_at).toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(stage.ended_at).toLocaleString()}
+                          {stage.ended_at && new Date(stage.ended_at).toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {stage.log_path && (
@@ -228,7 +199,7 @@ export default function JobDetails(): React.JSX.Element {
                               className="p-0 h-auto"
                               onClick={async () => {
                                 try {
-                                  const content = await window.api.readLogFile(stage.log_path)
+                                  const content = await window.api.readLogFile(stage.log_path!)
                                   setSelectedLog({ content, stageName: stage.name })
                                   setShowLogModal(true)
                                 } catch (error) {
