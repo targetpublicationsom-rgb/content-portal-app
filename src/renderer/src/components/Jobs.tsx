@@ -201,7 +201,7 @@ export default function Jobs(): React.JSX.Element {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex justify-center p-4">
+        <div className="flex-1 flex justify-center p-3">
           <div className="w-full h-full rounded-lg border bg-card shadow-sm">
             <div className="h-full flex flex-col">
               <div className="p-4 border-b bg-muted/30">
@@ -484,7 +484,7 @@ export default function Jobs(): React.JSX.Element {
                   )}
                 </div>
               </div>
-              <div className="overflow-auto">
+              <div className="overflow-auto custom-scrollbar">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -764,9 +764,9 @@ export default function Jobs(): React.JSX.Element {
               <DialogHeader className="px-6 py-4 border-b">
                 <DialogTitle>{reportTitle}</DialogTitle>
               </DialogHeader>
-              <div className="flex-1 overflow-auto p-6">
+              <div className="flex-1 overflow-auto p-3 custom-scrollbar">
                 <div
-                  className="w-full h-full border-0 overflow-auto"
+                  className="w-full h-full border-0 overflow-auto custom-scrollbar"
                   style={{ minHeight: '500px' }}
                   dangerouslySetInnerHTML={{ __html: reportContent }}
                 />

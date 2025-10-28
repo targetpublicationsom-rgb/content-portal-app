@@ -2,15 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import type { DashboardStats } from '../types'
 import { fetchDashboardStats } from '../services'
-import {
-  Users,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Upload,
-  TrendingUp,
-  Activity
-} from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, Upload, TrendingUp, Activity } from 'lucide-react'
 
 export default function Dashboard(): React.JSX.Element {
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -42,7 +34,7 @@ export default function Dashboard(): React.JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col p-6 space-y-6">
+      <div className="flex-1 flex flex-col p-3 space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">Overview of your content processing pipeline</p>
@@ -60,7 +52,7 @@ export default function Dashboard(): React.JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 space-y-6 overflow-auto">
+    <div className="flex-1 flex flex-col p-3 space-y-6 overflow-auto custom-scrollbar">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -192,7 +184,7 @@ export default function Dashboard(): React.JSX.Element {
       </div>
 
       {/* By Stream */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>Jobs by Stream</CardTitle>
           <CardDescription>Distribution of jobs across different streams</CardDescription>
@@ -225,7 +217,7 @@ export default function Dashboard(): React.JSX.Element {
             ))}
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   )
 }
