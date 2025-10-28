@@ -61,10 +61,14 @@ export default function Dashboard(): React.JSX.Element {
 
   // Filter options state
   const [streams, setStreams] = useState<{ id: string; name: string }[]>([])
+  const [boards, setBoards] = useState<{ id: string; name: string }[]>([])
+  const [mediums, setMediums] = useState<{ id: string; name: string }[]>([])
   const [standards, setStandards] = useState<{ id: string; name: string }[]>([])
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([])
   const [loadingOptions, setLoadingOptions] = useState({
     streams: false,
+    boards: false,
+    mediums: false,
     standards: false,
     subjects: false
   })
@@ -72,6 +76,8 @@ export default function Dashboard(): React.JSX.Element {
     state: '',
     mode: '',
     stream_id: '',
+    board_id: '',
+    medium_id: '',
     standard_id: '',
     subject_id: '',
     searchQuery: ''
@@ -82,6 +88,7 @@ export default function Dashboard(): React.JSX.Element {
   // Fetch filter options
   useEffect(() => {
     const fetchOptions = async (): Promise<void> => {
+      // Fetch streams
       try {
         setLoadingOptions((prev) => ({ ...prev, streams: true }))
         const { data: streamsData } = await api.get('/streams')
@@ -91,20 +98,51 @@ export default function Dashboard(): React.JSX.Element {
       } finally {
         setLoadingOptions((prev) => ({ ...prev, streams: false }))
       }
+
+      // Fetch boards
+      try {
+        setLoadingOptions((prev) => ({ ...prev, boards: true }))
+        const { data: boardsData } = await api.get('/boards')
+        setBoards(boardsData.data || [])
+      } catch (error) {
+        console.error('Failed to fetch boards:', error)
+      } finally {
+        setLoadingOptions((prev) => ({ ...prev, boards: false }))
+      }
+
+      // Fetch mediums
+      try {
+        setLoadingOptions((prev) => ({ ...prev, mediums: true }))
+        const { data: mediumsData } = await api.get('/mediums')
+        setMediums(mediumsData.data || [])
+      } catch (error) {
+        console.error('Failed to fetch mediums:', error)
+      } finally {
+        setLoadingOptions((prev) => ({ ...prev, mediums: false }))
+      }
     }
 
     fetchOptions()
-  }, []) // Fetch streams on mount
+  }, []) // Fetch initial options on mount
 
-  // Watch stream_id for standards
+  // Watch stream_id, board_id, and medium_id for standards
   useEffect(() => {
     const fetchStandards = async (): Promise<void> => {
-      if (filters.stream_id && filters.stream_id !== 'all') {
+      if (
+        filters.stream_id &&
+        filters.stream_id !== 'all' &&
+        filters.medium_id &&
+        filters.medium_id !== 'all' &&
+        filters.board_id &&
+        filters.board_id !== 'all'
+      ) {
         try {
           setLoadingOptions((prev) => ({ ...prev, standards: true }))
           const { data: standardsData } = await api.get('/standards', {
             params: {
-              stream_id: filters.stream_id
+              stream_id: filters.stream_id,
+              medium_id: filters.medium_id,
+              board_id: filters.board_id
             }
           })
           setStandards(standardsData.data || [])
@@ -115,12 +153,12 @@ export default function Dashboard(): React.JSX.Element {
         }
       } else {
         setStandards([])
-        setFilters((prev) => ({ ...prev, standard_id: 'all', subject_id: 'all' }))
+        setFilters((prev) => ({ ...prev, standard_id: '', subject_id: '' }))
       }
     }
 
     fetchStandards()
-  }, [filters.stream_id])
+  }, [filters.stream_id, filters.board_id, filters.medium_id])
 
   // Watch standard_id for subjects
   useEffect(() => {
@@ -141,7 +179,7 @@ export default function Dashboard(): React.JSX.Element {
         }
       } else {
         setSubjects([])
-        setFilters((prev) => ({ ...prev, subject_id: 'all' }))
+        setFilters((prev) => ({ ...prev, subject_id: '' }))
       }
     }
 
@@ -173,6 +211,10 @@ export default function Dashboard(): React.JSX.Element {
         if (filters.mode && filters.mode !== 'all') params.append('mode', filters.mode)
         if (filters.stream_id && filters.stream_id !== 'all')
           params.append('stream_id', filters.stream_id)
+        if (filters.board_id && filters.board_id !== 'all')
+          params.append('board_id', filters.board_id)
+        if (filters.medium_id && filters.medium_id !== 'all')
+          params.append('medium_id', filters.medium_id)
         if (filters.standard_id && filters.standard_id !== 'all')
           params.append('standard_id', filters.standard_id)
         if (filters.subject_id && filters.subject_id !== 'all')
@@ -265,149 +307,249 @@ export default function Dashboard(): React.JSX.Element {
         <div className="flex-1 flex justify-center p-4">
           <div className="w-full h-full rounded-lg border bg-card shadow-sm">
             <div className="h-full flex flex-col">
-              <div className="p-4 space-y-4 border-b">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <h2 className="text-lg font-semibold">Jobs</h2>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setLoading(true)
-                      fetchJobs()
-                    }}
-                    className="flex items-center gap-1"
-                  >
-                    <RefreshCcw />
-                    Refresh
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Search jobs..."
-                      value={filters.searchQuery}
-                      onChange={(e) => {
-                        setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Jobs</h2>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFilters({
+                          state: '',
+                          mode: '',
+                          stream_id: '',
+                          board_id: '',
+                          medium_id: '',
+                          standard_id: '',
+                          subject_id: '',
+                          searchQuery: ''
+                        })
                         setCurrentPage(1)
                       }}
-                      className="w-full"
-                    />
-                    {filters.searchQuery && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setFilters((prev) => ({ ...prev, searchQuery: '' }))
+                      className="whitespace-nowrap"
+                    >
+                      Clear Filters
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setLoading(true)
+                        fetchJobs()
+                      }}
+                      className="flex items-center gap-1"
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Search and Status Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-1 flex gap-2">
+                      <Input
+                        placeholder="Search jobs..."
+                        value={filters.searchQuery}
+                        onChange={(e) => {
+                          setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
                           setCurrentPage(1)
                         }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
+                        className="flex-1"
+                      />
+                      {filters.searchQuery && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setFilters((prev) => ({ ...prev, searchQuery: '' }))
+                            setCurrentPage(1)
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <Select
+                      value={filters.state}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({ ...prev, state: value }))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All States" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All States</SelectItem>
+                        <SelectItem value="RUNNING">Running</SelectItem>
+                        <SelectItem value="DONE">Done</SelectItem>
+                        <SelectItem value="FAILED">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={filters.mode}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({ ...prev, mode: value }))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Formats" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Formats</SelectItem>
+                        <SelectItem value="single">Single File</SelectItem>
+                        <SelectItem value="two-file">Two Files</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <Select
-                    value={filters.state}
-                    onValueChange={(value) => {
-                      setFilters((prev) => ({ ...prev, state: value }))
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All States</SelectItem>
-                      <SelectItem value="RUNNING">Running</SelectItem>
-                      <SelectItem value="DONE">Done</SelectItem>
-                      <SelectItem value="FAILED">Failed</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {/* Taxonomy Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <Select
+                      value={filters.stream_id}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          stream_id: value,
+                          standard_id: '',
+                          subject_id: ''
+                        }))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Streams</SelectItem>
+                        {streams.map((stream) => (
+                          <SelectItem key={stream.id} value={stream.id}>
+                            {stream.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                  <Select
-                    value={filters.mode}
-                    onValueChange={(value) => {
-                      setFilters((prev) => ({ ...prev, mode: value }))
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Format" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Formats</SelectItem>
+                    <Select
+                      value={filters.board_id}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          board_id: value,
+                          standard_id: '',
+                          subject_id: ''
+                        }))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Boards</SelectItem>
+                        {boards.map((board) => (
+                          <SelectItem key={board.id} value={board.id}>
+                            {board.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                      <SelectItem value="single">Single File</SelectItem>
-                      <SelectItem value="two-file">Two Files</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Select
+                      value={filters.medium_id}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          medium_id: value,
+                          standard_id: '',
+                          subject_id: ''
+                        }))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Mediums</SelectItem>
+                        {mediums.map((medium) => (
+                          <SelectItem key={medium.id} value={medium.id}>
+                            {medium.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                  <Select
-                    value={filters.stream_id}
-                    onValueChange={(value) => {
-                      setFilters((prev) => ({ ...prev, stream_id: value }))
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingOptions.streams ? 'Loading...' : 'Stream'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Streams</SelectItem>
-                      {streams.map((stream) => (
-                        <SelectItem key={stream.id} value={stream.id}>
-                          {stream.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <Select
+                      value={filters.standard_id}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({ ...prev, standard_id: value, subject_id: '' }))
+                        setCurrentPage(1)
+                      }}
+                      disabled={
+                        loadingOptions.standards ||
+                        !filters.stream_id ||
+                        filters.stream_id === 'all' ||
+                        !filters.medium_id ||
+                        filters.medium_id === 'all' ||
+                        !filters.board_id ||
+                        filters.board_id === 'all'
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Standards</SelectItem>
+                        {standards.map((standard) => (
+                          <SelectItem key={standard.id} value={standard.id}>
+                            {standard.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                  <Select
-                    value={filters.standard_id}
-                    onValueChange={(value) => {
-                      setFilters((prev) => ({ ...prev, standard_id: value }))
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={loadingOptions.standards ? 'Loading...' : 'Standard'}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Standards</SelectItem>
-                      {standards.map((standard) => (
-                        <SelectItem key={standard.id} value={standard.id}>
-                          {standard.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={filters.subject_id}
-                    onValueChange={(value) => {
-                      setFilters((prev) => ({ ...prev, subject_id: value }))
-                      setCurrentPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={loadingOptions.subjects ? 'Loading...' : 'Subject'}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Subjects</SelectItem>
-                      {subjects.map((subject) => (
-                        <SelectItem key={subject.id} value={subject.id}>
-                          {subject.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <Select
+                      value={filters.subject_id}
+                      onValueChange={(value) => {
+                        setFilters((prev) => ({ ...prev, subject_id: value }))
+                        setCurrentPage(1)
+                      }}
+                      disabled={
+                        loadingOptions.subjects ||
+                        !filters.standard_id ||
+                        filters.standard_id === 'all'
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Subjects</SelectItem>
+                        {subjects.map((subject) => (
+                          <SelectItem key={subject.id} value={subject.id}>
+                            {subject.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
               <div className="overflow-auto">
