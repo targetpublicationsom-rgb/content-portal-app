@@ -127,5 +127,24 @@
       padding-right: var(--removed-body-scroll-bar-size, 0px);
   }
 
+  /* Custom scrollbar styles */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 2px;
+    scrollbar-color: oklch(0.556 0 0 / 20%) transparent;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.556 0 0 / 20%);
+    border-radius: 1px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.556 0 0 / 35%);
+  }
 
 }

@@ -85,7 +85,7 @@ export default function UploadForm({
   } = useTaxonomyData()
 
   const [loading, setLoading] = useState(false)
-  const [errors, setErrors] = useState<Record<string, boolean>>({
+  const [, setErrors] = useState<Record<string, boolean>>({
     stream: false,
     medium: false,
     standard: false,
@@ -168,9 +168,9 @@ export default function UploadForm({
       if (response.job_id) {
         onSuccess?.(response.job_id)
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('submit', e)
-      toast.error('Failed to create job. Please try again.')
+      toast.error(e.message)
       setErrors((prev) => ({ ...prev, networkError: true }))
     } finally {
       setLoading(false)
@@ -188,11 +188,6 @@ export default function UploadForm({
         <CardContent className="flex-1 overflow-y-auto">
           <Form {...form}>
             <form id="uploadForm" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {errors.networkError && (
-                <div className="p-4 text-sm text-red-500 bg-red-50 rounded">
-                  Network error. Please check your connection and try again.
-                </div>
-              )}
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField

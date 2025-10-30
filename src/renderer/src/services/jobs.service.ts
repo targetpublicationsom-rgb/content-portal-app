@@ -1,5 +1,18 @@
 import api from '../lib/axios'
-import type { JobsResponse, JobDetails } from '../types'
+import type { JobsResponse, JobDetails, DashboardStats } from '../types'
+
+/**
+ * Fetch dashboard stats
+ */
+export const fetchDashboardStats = async (serverPort: number): Promise<DashboardStats> => {
+  const response = await fetch(`http://127.0.0.1:${serverPort}/dashboard/stats`)
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null)
+    const errorMessage = errorData?.detail || 'Failed to fetch dashboard stats'
+    throw new Error(errorMessage)
+  }
+  return response.json()
+}
 
 /**
  * Fetch jobs with optional filters and pagination
@@ -26,7 +39,9 @@ export const fetchJobs = async (params?: {
 export const fetchJobDetails = async (jobId: string, serverPort: number): Promise<JobDetails> => {
   const response = await fetch(`http://127.0.0.1:${serverPort}/jobs/${jobId}`)
   if (!response.ok) {
-    throw new Error('Failed to fetch job details')
+    const errorData = await response.json().catch(() => null)
+    const errorMessage = errorData?.detail || 'Failed to fetch job details'
+    throw new Error(errorMessage)
   }
   return response.json()
 }
@@ -44,7 +59,10 @@ export const createJob = async (formData: FormData): Promise<{ job_id: string }>
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create job')
+        const errorData = await response.json().catch(() => null)
+        console.log(errorData)
+        const errorMessage = errorData?.detail || 'Failed to create job'
+        throw new Error(errorMessage)
       }
       return response.json()
     }
@@ -70,7 +88,9 @@ export const fetchReport = async (reportUrl: string, serverPort: number): Promis
   const fullUrl = `http://127.0.0.1:${serverPort}${reportUrl}`
   const response = await fetch(fullUrl)
   if (!response.ok) {
-    throw new Error('Failed to fetch report')
+    const errorData = await response.json().catch(() => null)
+    const errorMessage = errorData?.detail || 'Failed to fetch report'
+    throw new Error(errorMessage)
   }
   return response.text()
 }
@@ -84,7 +104,9 @@ export const fetchStageLogs = async (
 ): Promise<{ content: string }> => {
   const response = await fetch(`http://127.0.0.1:${serverPort}/logs?path=${logPath}`)
   if (!response.ok) {
-    throw new Error('Failed to fetch logs')
+    const errorData = await response.json().catch(() => null)
+    const errorMessage = errorData?.detail || 'Failed to fetch logs'
+    throw new Error(errorMessage)
   }
   return response.json()
 }
