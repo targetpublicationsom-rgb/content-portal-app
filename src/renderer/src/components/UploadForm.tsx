@@ -6,6 +6,7 @@ import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Form, FormField, FormItem, FormMessage } from './ui/form'
+import { Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useTaxonomyData } from '../hooks'
 import { createJob } from '../services'
@@ -180,10 +181,17 @@ export default function UploadForm({
   if (!open) return <></>
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[5vh]">
-      <Card className="w-[720px] max-h-[90vh] flex flex-col">
-        <CardHeader>
-          <CardTitle>Upload Content</CardTitle>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-[5vh]">
+      <Card className="w-[720px] max-h-[90vh] flex flex-col bg-card border-2 shadow-2xl rounded-xl">
+        <CardHeader className="pb-4 bg-gradient-to-r from-card to-card/80 border-b rounded-t-xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-2xl font-bold text-foreground">Upload Content</CardTitle>
+            </div>
+            <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Upload className="h-5 w-5 text-blue-600" />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto">
           <Form {...form}>

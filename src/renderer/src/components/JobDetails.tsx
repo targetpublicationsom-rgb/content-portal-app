@@ -48,23 +48,25 @@ export default function JobDetails(): React.JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col pb-12 min-h-screen bg-background">
+    <div className="flex-1 flex flex-col pb-12 min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 border-b">
-        <div className="flex items-center justify-between p-6">
-          <div className="flex items-center gap-4">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-6">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate(-1)}
-              className="hover:bg-muted/50"
+              className="px-4 py-2 text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Job Details</h1>
-              <p className="text-muted-foreground font-mono text-sm mt-1">{job.job_id}</p>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                Job Details
+              </h1>
+              <p className="text-md text-muted-foreground font-mono">{job.job_id}</p>
             </div>
           </div>
         </div>
@@ -75,7 +77,6 @@ export default function JobDetails(): React.JSX.Element {
         {/* Job Information Card */}
         <div className="bg-card rounded-xl border shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-6 text-foreground flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-blue-500"></div>
             Job Information
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -162,12 +163,9 @@ export default function JobDetails(): React.JSX.Element {
           </div>
         </div>
 
-
-
         {/* Processing Stages Section */}
         <div className="bg-card rounded-xl border shadow-sm p-6">
           <h2 className="text-2xl font-semibold mb-6 text-foreground flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-purple-500"></div>
             Processing Stages
           </h2>
           <div className="border rounded-lg">

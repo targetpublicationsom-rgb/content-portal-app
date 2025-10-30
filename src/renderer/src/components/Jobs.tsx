@@ -193,587 +193,603 @@ export default function Jobs(): React.JSX.Element {
   }
   return (
     <TooltipProvider>
-      <div className="flex-1 flex flex-col pb-12">
+      <div className="flex-1 flex flex-col min-h-screen bg-gradient-to-br from-background via-background to-muted/20 overflow-auto custom-scrollbar">
         {/* Header */}
-        <div className="flex w-full items-center justify-between border-b p-4 bg-card">
-          <h1 className="text-2xl font-bold">Job Dashboard</h1>
-          <Button onClick={() => setShowUpload(true)}>Upload</Button>
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+          <div className="flex items-center justify-between px-8 py-4">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                Job Dashboard
+              </h1>
+              <p className="text-md text-muted-foreground">
+                Manage and monitor your content processing jobs
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowUpload(true)}
+              className="px-6 py-3 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors shadow-sm"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload
+            </Button>
+          </div>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex justify-center p-3">
-          <div className="w-full h-full rounded-lg border bg-card shadow-sm">
-            <div className="h-full flex flex-col">
-              <div className="p-4 border-b bg-muted/30">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">Jobs</h2>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setFilters({
-                          state: '',
-                          mode: '',
-                          stream_id: '',
-                          board_id: '',
-                          medium_id: '',
-                          standard_id: '',
-                          subject_id: '',
-                          searchQuery: ''
-                        })
-                        setCurrentPage(1)
-                      }}
-                      className="whitespace-nowrap"
-                    >
-                      Clear Filters
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setLoading(true)
-                        fetchJobsData()
-                      }}
-                      className="flex items-center gap-1"
-                    >
-                      <RefreshCcw className="h-4 w-4" />
-                      Refresh
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {/* Search Bar with State & Format */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Search jobs by ID, taxonomy..."
-                      value={filters.searchQuery}
-                      onChange={(e) => {
-                        setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
-                        setCurrentPage(1)
-                      }}
-                      className="flex-1"
-                    />
-                    {filters.searchQuery && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setFilters((prev) => ({ ...prev, searchQuery: '' }))
-                          setCurrentPage(1)
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <div className="w-40">
-                      <Select
-                        value={filters.state}
-                        onValueChange={(value) => {
-                          setFilters((prev) => ({ ...prev, state: value }))
-                          setCurrentPage(1)
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All States" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All States</SelectItem>
-                          <SelectItem value="RUNNING">Running</SelectItem>
-                          <SelectItem value="DONE">Done</SelectItem>
-                          <SelectItem value="FAILED">Failed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="w-40">
-                      <Select
-                        value={filters.mode}
-                        onValueChange={(value) => {
-                          setFilters((prev) => ({ ...prev, mode: value }))
-                          setCurrentPage(1)
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All Formats" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Formats</SelectItem>
-                          <SelectItem value="single">Single File</SelectItem>
-                          <SelectItem value="two-file">Two Files</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowFilters(!showFilters)}
-                      className="shrink-0"
-                    >
-                      {showFilters ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Collapsible Taxonomy Filters */}
-                  {showFilters && (
-                    <div className="space-y-2 pt-1">
-                      {/* Row: Stream, Board, Medium */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 min-w-0">
-                          <Select
-                            value={filters.stream_id}
-                            onValueChange={(value) => {
-                              setFilters((prev) => ({
-                                ...prev,
-                                stream_id: value,
-                                standard_id: '',
-                                subject_id: ''
-                              }))
-                              setCurrentPage(1)
-                            }}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Streams</SelectItem>
-                              {streams.map((stream) => (
-                                <SelectItem key={stream.id} value={stream.id}>
-                                  {stream.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <Select
-                            value={filters.board_id}
-                            onValueChange={(value) => {
-                              setFilters((prev) => ({
-                                ...prev,
-                                board_id: value,
-                                standard_id: '',
-                                subject_id: ''
-                              }))
-                              setCurrentPage(1)
-                            }}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Boards</SelectItem>
-                              {boards.map((board) => (
-                                <SelectItem key={board.id} value={board.id}>
-                                  {board.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <Select
-                            value={filters.medium_id}
-                            onValueChange={(value) => {
-                              setFilters((prev) => ({
-                                ...prev,
-                                medium_id: value,
-                                standard_id: '',
-                                subject_id: ''
-                              }))
-                              setCurrentPage(1)
-                            }}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Mediums</SelectItem>
-                              {mediums.map((medium) => (
-                                <SelectItem key={medium.id} value={medium.id}>
-                                  {medium.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Row: Standard & Subject */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 min-w-0">
-                          <Select
-                            value={filters.standard_id}
-                            onValueChange={(value) => {
-                              setFilters((prev) => ({
-                                ...prev,
-                                standard_id: value,
-                                subject_id: ''
-                              }))
-                              setCurrentPage(1)
-                            }}
-                            disabled={
-                              loadingOptions.standards ||
-                              !filters.stream_id ||
-                              filters.stream_id === 'all' ||
-                              !filters.medium_id ||
-                              filters.medium_id === 'all' ||
-                              !filters.board_id ||
-                              filters.board_id === 'all'
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={
-                                  loadingOptions.standards ? 'Loading...' : 'All Standards'
-                                }
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Standards</SelectItem>
-                              {standards.map((standard) => (
-                                <SelectItem key={standard.id} value={standard.id}>
-                                  {standard.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <Select
-                            value={filters.subject_id}
-                            onValueChange={(value) => {
-                              setFilters((prev) => ({ ...prev, subject_id: value }))
-                              setCurrentPage(1)
-                            }}
-                            disabled={
-                              loadingOptions.subjects ||
-                              !filters.standard_id ||
-                              filters.standard_id === 'all'
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={
-                                  loadingOptions.subjects ? 'Loading...' : 'All Subjects'
-                                }
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Subjects</SelectItem>
-                              {subjects.map((subject) => (
-                                <SelectItem key={subject.id} value={subject.id}>
-                                  {subject.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
+        <div className="flex-1 p-8 space-y-8 max-w-7xl mx-auto w-full">
+          {/* Filters Section */}
+          <div className="bg-card rounded-xl border shadow-sm p-6 mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-foreground">Jobs</h2>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFilters({
+                      state: '',
+                      mode: '',
+                      stream_id: '',
+                      board_id: '',
+                      medium_id: '',
+                      standard_id: '',
+                      subject_id: '',
+                      searchQuery: ''
+                    })
+                    setCurrentPage(1)
+                  }}
+                  className="px-4 py-2 text-sm font-medium border-2 hover:bg-muted/50 rounded-lg transition-colors"
+                >
+                  Clear Filters
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLoading(true)
+                    fetchJobsData()
+                  }}
+                  className="px-4 py-2 text-sm font-medium border-2 hover:bg-muted/50 rounded-lg transition-colors"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="px-4 py-2 text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors"
+                >
+                  {showFilters ? (
+                    <>
+                      Hide Filters <ChevronUp className="w-4 h-4 ml-1" />
+                    </>
+                  ) : (
+                    <>
+                      More Filters <ChevronDown className="w-4 h-4 ml-1" />
+                    </>
                   )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {/* Search Bar with State & Format */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search jobs by ID, taxonomy..."
+                  value={filters.searchQuery}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
+                    setCurrentPage(1)
+                  }}
+                  className="flex-1"
+                />
+                {filters.searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setFilters((prev) => ({ ...prev, searchQuery: '' }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+                <div className="w-40">
+                  <Select
+                    value={filters.state}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, state: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="All States" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All States</SelectItem>
+                      <SelectItem value="RUNNING">Running</SelectItem>
+                      <SelectItem value="DONE">Done</SelectItem>
+                      <SelectItem value="FAILED">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-40">
+                  <Select
+                    value={filters.mode}
+                    onValueChange={(value) => {
+                      setFilters((prev) => ({ ...prev, mode: value }))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="All Formats" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Formats</SelectItem>
+                      <SelectItem value="single">Single File</SelectItem>
+                      <SelectItem value="two-file">Two Files</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-              <div className="overflow-auto custom-scrollbar">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Job ID</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Format</TableHead>
-                      <TableHead>Gate Status</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={12} className="h-24 text-center">
-                          <div className="flex items-center justify-center text-muted-foreground">
-                            Loading jobs...
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : jobs.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={12} className="h-24 text-center">
-                          <div className="flex flex-col items-center justify-center text-muted-foreground">
-                            <p>No jobs found</p>
-                            <p className="text-sm">Upload content to start processing</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      jobs.map((job) => (
-                        <TableRow key={job.job_id} className="group">
-                          <TableCell className="font-medium">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-mono text-sm">{job?.job_id}</span>
-                              {(job.subject_name || job.standard_name || job.stream_name) && (
-                                <span className="text-xs text-muted-foreground">
-                                  {job.subject_name || job.standard_name || job.stream_name}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {getStatusBadge(job.state)}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
-                            >
-                              {job.mode?.replace('-', ' ')}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {
-                              <Badge
-                                variant="outline"
-                                className={`capitalize font-medium ${
-                                  job.gate_passed
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                    : 'bg-rose-50 text-rose-700 border-rose-100'
-                                }`}
-                              >
-                                Gate {job.gate_passed ? 'passed' : 'failed'}
-                              </Badge>
-                            }
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span>{new Date(job.created_at).toLocaleDateString()}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {new Date(job.created_at).toLocaleTimeString()}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2 transition-opacity">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => navigate(`/jobs/${job.job_id}`)}
-                                      className="flex items-center gap-2"
-                                      disabled={job.state === 'RUNNING'}
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>
-                                      {job.state === 'RUNNING'
-                                        ? 'Job is currently processing'
-                                        : 'View job details and processing stages'}
-                                    </p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
 
-                              {serverPort && job.report_url && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          handleViewReport(
-                                            job.report_url?.replace(
-                                              /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
-                                              ''
-                                            ) || '',
-                                            `Report for ${job.job_id}`
-                                          )
-                                        }
-                                        className="flex items-center gap-2"
-                                        disabled={job.state === 'RUNNING'}
-                                      >
-                                        <FileText className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>
-                                        {job.state === 'RUNNING'
-                                          ? 'Job is currently processing'
-                                          : 'View report'}
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleRerun(job.job_id)}
-                                      className="flex items-center gap-2"
-                                      disabled={job.state === 'RUNNING'}
-                                    >
-                                      <RotateCw className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>
-                                      {job.state === 'RUNNING'
-                                        ? 'Job is currently processing'
-                                        : 'Rerun job'}
-                                    </p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => setShowUpload(true)}
-                                      className="flex items-center gap-2"
-                                      disabled={job.upload_state === 'BLOCKED'}
-                                    >
-                                      <Upload className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>
-                                      {job.state === 'RUNNING'
-                                        ? 'Job is currently processing'
-                                        : !job.gate_passed
-                                          ? 'Upload is only available for jobs that passed the gate'
-                                          : 'Upload new files'}
-                                    </p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              {!loading && jobs.length > 0 && (
-                <div className="border-t px-4 py-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm text-muted-foreground">
-                      Showing {(currentPage - 1) * pageSize + 1} to{' '}
-                      {Math.min(currentPage * pageSize, total)} of {total} entries
+              {/* Collapsible Taxonomy Filters */}
+              {showFilters && (
+                <div className="space-y-2 pt-1">
+                  {/* Row: Stream, Board, Medium */}
+                  <div className="flex gap-2">
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={filters.stream_id}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({
+                            ...prev,
+                            stream_id: value,
+                            standard_id: '',
+                            subject_id: ''
+                          }))
+                          setCurrentPage(1)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Streams</SelectItem>
+                          {streams.map((stream) => (
+                            <SelectItem key={stream.id} value={stream.id}>
+                              {stream.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={filters.board_id}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({
+                            ...prev,
+                            board_id: value,
+                            standard_id: '',
+                            subject_id: ''
+                          }))
+                          setCurrentPage(1)
+                        }}
                       >
-                        {'Previous'}
-                      </Button>
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
-                          (page) => (
-                            <Button
-                              key={page}
-                              variant={currentPage === page ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => handlePageChange(page)}
-                              className="h-8 w-8 p-0"
-                            >
-                              {page}
-                            </Button>
-                          )
-                        )}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage >= Math.ceil(total / pageSize)}
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Boards</SelectItem>
+                          {boards.map((board) => (
+                            <SelectItem key={board.id} value={board.id}>
+                              {board.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={filters.medium_id}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({
+                            ...prev,
+                            medium_id: value,
+                            standard_id: '',
+                            subject_id: ''
+                          }))
+                          setCurrentPage(1)
+                        }}
                       >
-                        {'Next'}
-                      </Button>
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Mediums</SelectItem>
+                          {mediums.map((medium) => (
+                            <SelectItem key={medium.id} value={medium.id}>
+                              {medium.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Row: Standard & Subject */}
+                  <div className="flex gap-2">
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={filters.standard_id}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({
+                            ...prev,
+                            standard_id: value,
+                            subject_id: ''
+                          }))
+                          setCurrentPage(1)
+                        }}
+                        disabled={
+                          loadingOptions.standards ||
+                          !filters.stream_id ||
+                          filters.stream_id === 'all' ||
+                          !filters.medium_id ||
+                          filters.medium_id === 'all' ||
+                          !filters.board_id ||
+                          filters.board_id === 'all'
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Standards</SelectItem>
+                          {standards.map((standard) => (
+                            <SelectItem key={standard.id} value={standard.id}>
+                              {standard.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <Select
+                        value={filters.subject_id}
+                        onValueChange={(value) => {
+                          setFilters((prev) => ({ ...prev, subject_id: value }))
+                          setCurrentPage(1)
+                        }}
+                        disabled={
+                          loadingOptions.subjects ||
+                          !filters.standard_id ||
+                          filters.standard_id === 'all'
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Subjects</SelectItem>
+                          {subjects.map((subject) => (
+                            <SelectItem key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
-          <UploadForm
-            open={showUpload}
-            onClose={() => setShowUpload(false)}
-            onSuccess={(jobId) => {
-              setActiveJobId(jobId)
-              setShowJobProgress(true)
-              fetchJobsData()
-            }}
-          />
 
-          <JobProgress
-            open={showJobProgress}
-            onClose={() => {
-              setShowJobProgress(false)
-              setActiveJobId('')
-              fetchJobsData()
-            }}
-            jobId={activeJobId}
-            serverPort={serverPort || 0}
-          />
+          {/* Jobs Table Section */}
+          <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+            <div className="overflow-auto custom-scrollbar">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Job ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Format</TableHead>
+                    <TableHead>Gate Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={12} className="h-24 text-center">
+                        <div className="flex items-center justify-center text-muted-foreground">
+                          Loading jobs...
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : jobs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={12} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center text-muted-foreground">
+                          <p>No jobs found</p>
+                          <p className="text-sm">Upload content to start processing</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    jobs.map((job) => (
+                      <TableRow key={job.job_id} className="group">
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono text-sm">{job?.job_id}</span>
+                            {(job.subject_name || job.standard_name || job.stream_name) && (
+                              <span className="text-xs text-muted-foreground">
+                                {job.subject_name || job.standard_name || job.stream_name}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">{getStatusBadge(job.state)}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className="capitalize bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-50"
+                          >
+                            {job.mode?.replace('-', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {
+                            <Badge
+                              variant="outline"
+                              className={`capitalize font-medium ${
+                                job.gate_passed
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                  : 'bg-rose-50 text-rose-700 border-rose-100'
+                              }`}
+                            >
+                              Gate {job.gate_passed ? 'passed' : 'failed'}
+                            </Badge>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span>{new Date(job.created_at).toLocaleDateString()}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {new Date(job.created_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2 transition-opacity">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => navigate(`/jobs/${job.job_id}`)}
+                                    className="flex items-center gap-2"
+                                    disabled={job.state === 'RUNNING'}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {job.state === 'RUNNING'
+                                      ? 'Job is currently processing'
+                                      : 'View job details and processing stages'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
 
-          <Dialog
-            open={showReport}
-            onOpenChange={(open) => {
-              setShowReport(open)
-              if (!open) {
-                // Clean up the report content when dialog closes
-                setReportContent('')
-                // Add a small delay to ensure smooth transition
-                setTimeout(() => {
-                  document.body.style.pointerEvents = 'auto'
-                }, 100)
-              }
+                            {serverPort && job.report_url && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleViewReport(
+                                          job.report_url?.replace(
+                                            /^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,
+                                            ''
+                                          ) || '',
+                                          `Report for ${job.job_id}`
+                                        )
+                                      }
+                                      className="flex items-center gap-2"
+                                      disabled={job.state === 'RUNNING'}
+                                    >
+                                      <FileText className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>
+                                      {job.state === 'RUNNING'
+                                        ? 'Job is currently processing'
+                                        : 'View report'}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRerun(job.job_id)}
+                                    className="flex items-center gap-2"
+                                    disabled={job.state === 'RUNNING'}
+                                  >
+                                    <RotateCw className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {job.state === 'RUNNING'
+                                      ? 'Job is currently processing'
+                                      : 'Rerun job'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowUpload(true)}
+                                    className="flex items-center gap-2"
+                                    disabled={job.upload_state === 'BLOCKED'}
+                                  >
+                                    <Upload className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {job.state === 'RUNNING'
+                                      ? 'Job is currently processing'
+                                      : !job.gate_passed
+                                        ? 'Upload is only available for jobs that passed the gate'
+                                        : 'Upload new files'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {!loading && jobs.length > 0 && (
+              <div className="border-t px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {(currentPage - 1) * pageSize + 1} to{' '}
+                    {Math.min(currentPage * pageSize, total)} of {total} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      {'Previous'}
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
+                        (page) => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageChange(page)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage >= Math.ceil(total / pageSize)}
+                    >
+                      {'Next'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <UploadForm
+          open={showUpload}
+          onClose={() => setShowUpload(false)}
+          onSuccess={(jobId) => {
+            setActiveJobId(jobId)
+            setShowJobProgress(true)
+            fetchJobsData()
+          }}
+        />
+
+        <JobProgress
+          open={showJobProgress}
+          onClose={() => {
+            setShowJobProgress(false)
+            setActiveJobId('')
+            fetchJobsData()
+          }}
+          jobId={activeJobId}
+          serverPort={serverPort || 0}
+        />
+
+        <Dialog
+          open={showReport}
+          onOpenChange={(open) => {
+            setShowReport(open)
+            if (!open) {
+              // Clean up the report content when dialog closes
+              setReportContent('')
+              // Add a small delay to ensure smooth transition
+              setTimeout(() => {
+                document.body.style.pointerEvents = 'auto'
+              }, 100)
+            }
+          }}
+        >
+          <DialogContent
+            className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0"
+            onInteractOutside={(e) => {
+              e.preventDefault()
             }}
           >
-            <DialogContent
-              className="max-w-[95vw] w-full min-w-[1000px] h-[90vh] p-0"
-              onInteractOutside={(e) => {
-                e.preventDefault()
-              }}
-            >
-              <DialogHeader className="px-6 py-4 border-b">
-                <DialogTitle>{reportTitle}</DialogTitle>
-              </DialogHeader>
-              <div className="flex-1 overflow-auto p-3 custom-scrollbar">
-                <div
-                  className="w-full h-full border-0 overflow-auto custom-scrollbar"
-                  style={{ minHeight: '500px' }}
-                  dangerouslySetInnerHTML={{ __html: reportContent }}
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+            <DialogHeader className="px-6 py-4 border-b">
+              <DialogTitle>{reportTitle}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto p-3 custom-scrollbar">
+              <div
+                className="w-full h-full border-0 overflow-auto custom-scrollbar"
+                style={{ minHeight: '500px' }}
+                dangerouslySetInnerHTML={{ __html: reportContent }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   )
