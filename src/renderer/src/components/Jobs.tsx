@@ -846,7 +846,7 @@ export default function Jobs(): React.JSX.Element {
             <div className="py-6 text-center space-y-4">
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Uploading files to Server :{' '}
+                  Uploading files for job Id :{' '}
                   <span className="font-mono font-medium">{uploadingJobId}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
