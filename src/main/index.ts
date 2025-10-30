@@ -12,13 +12,25 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let serverProcess: ChildProcessWithoutNullStreams | null = null
 let serverRunning = false
+let serverStarting = false
 let isQuitting = false
 const DEFAULT_PORT = 6284
 
 async function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
+    serverStarting = true
+    serverRunning = false
+
+    // Notify renderer about server starting
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-status-change', {
+        status: 'starting',
+        message: 'Initializing Content Orchestrator...'
+      })
+    }
+
     // Use proper path resolution for both development and production
-    const executablePath = is.dev 
+    const executablePath = is.dev
       ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
       : path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'content-orchestrator.exe')
     console.log(`[Main] Starting Content Orchestrator: ${executablePath}`)
@@ -40,18 +52,30 @@ async function startPythonServer(): Promise<void> {
 
     if (!fs.existsSync(executablePath)) {
       console.error('[Main] Content Orchestrator executable not found:', executablePath)
+      serverStarting = false
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('server-status-change', {
+          status: 'error',
+          message: 'Content Orchestrator executable not found'
+        })
+      }
       reject(new Error('Content Orchestrator executable missing'))
       return
     }
 
     console.log(`[Main] Using Content Orchestrator executable: ${executablePath}`)
 
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-status-change', {
+        status: 'starting',
+        message: 'Starting Content Orchestrator process...'
+      })
+    }
+
     serverProcess = spawn(executablePath, [], {
       detached: false,
       stdio: ['pipe', 'pipe', 'pipe']
     })
-
-    serverRunning = true
 
     serverProcess.stdout.on('data', (data) => {
       const message = data.toString().trim()
@@ -61,6 +85,14 @@ async function startPythonServer(): Promise<void> {
         message.includes('Server started') ||
         message.includes('started')
       ) {
+        serverRunning = true
+        serverStarting = false
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-status-change', {
+            status: 'ready',
+            message: 'Content Orchestrator is ready!'
+          })
+        }
         resolve()
       }
     })
@@ -72,13 +104,28 @@ async function startPythonServer(): Promise<void> {
     serverProcess.on('error', (err) => {
       console.error('[Main] Failed to start Content Orchestrator process:', err)
       serverRunning = false
+      serverStarting = false
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('server-status-change', {
+          status: 'error',
+          message: `Failed to start server: ${err.message}`
+        })
+      }
       reject(err)
     })
 
     serverProcess.on('close', (code) => {
       console.log(`[Content Orchestrator] exited with code ${code}`)
       serverRunning = false
+      serverStarting = false
       serverProcess = null
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('server-status-change', {
+          status: 'stopped',
+          message: 'Content Orchestrator stopped'
+        })
+      }
 
       // ✅ Restart only if not quitting
       if (!isQuitting) {
@@ -89,8 +136,20 @@ async function startPythonServer(): Promise<void> {
       }
     })
 
-    // Fallback resolve in case server doesn’t print a ready message
-    setTimeout(() => resolve(), 3000)
+    // Fallback resolve in case server doesn't print a ready message
+    setTimeout(() => {
+      if (serverStarting) {
+        serverRunning = true
+        serverStarting = false
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-status-change', {
+            status: 'ready',
+            message: 'Content Orchestrator started (timeout)'
+          })
+        }
+        resolve()
+      }
+    }, 5000)
   })
 }
 
@@ -253,22 +312,23 @@ ipcMain.handle('read-log-file', async (_, filePath: string) => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.electron')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  createTray()
+  createWindow()
+
+  // Start server after window is created so we can send status updates
   try {
-    startPythonServer()
+    await startPythonServer()
     console.log('[Main] Python server started successfully')
   } catch (err) {
     console.error('[Main] Failed to start Python server:', err)
   }
-
-  createTray()
-  createWindow()
 })
 
 // --- 🧩 Keep app running in tray ---
@@ -308,4 +368,5 @@ ipcMain.handle('get-server-info', () => {
 })
 
 ipcMain.handle('is-server-running', () => serverRunning)
+ipcMain.handle('is-server-starting', () => serverStarting)
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))

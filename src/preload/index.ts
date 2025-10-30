@@ -9,6 +9,15 @@ const api = {
   // Check if server is running
   isServerRunning: (): Promise<boolean> => ipcRenderer.invoke('is-server-running'),
 
+  // Check if server is starting
+  isServerStarting: (): Promise<boolean> => ipcRenderer.invoke('is-server-starting'),
+
+  // Listen to server status changes
+  onServerStatusChange: (callback: (event: any, data: { status: string; message: string }) => void) => {
+    ipcRenderer.on('server-status-change', callback)
+    return () => ipcRenderer.removeListener('server-status-change', callback)
+  },
+
   // Read HTML file content
   readHtmlFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('read-html-file', filePath),
