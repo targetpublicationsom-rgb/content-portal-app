@@ -15,43 +15,32 @@ let serverRunning = false
 let isQuitting = false
 const DEFAULT_PORT = 6284
 
-// --- 🔥 Start Python Server ---
 async function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const pythonDir = path.join(process.cwd(), 'content-orchestration-service')
-    console.log(`[Main] Starting Python server in: ${pythonDir}`)
+    const executablePath = path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
+    console.log(`[Main] Starting Content Orchestrator: ${executablePath}`)
 
-    // 🧹 --- Cleanup any existing Python processes ---
     try {
       if (process.platform === 'win32') {
-        console.log('[Main] Cleaning up existing Python processes...')
-        execSync('taskkill /IM python.exe /F', { stdio: 'ignore' })
+        console.log('[Main] Cleaning up existing Content Orchestrator processes...')
+        execSync('taskkill /IM content-orchestrator.exe /F', { stdio: 'ignore' })
       } else {
-        console.log('[Main] Cleaning up existing Python processes...')
-        execSync('pkill -f "orchestrator.server"', { stdio: 'ignore' })
+        console.log('[Main] Cleaning up existing Content Orchestrator processes...')
+        execSync('pkill -f "content-orchestrator"', { stdio: 'ignore' })
       }
     } catch {
       // Ignore errors if nothing to kill
     }
 
-    // 🐍 --- Resolve Python executable inside .venv ---
-    const pythonExec =
-      process.platform === 'win32'
-        ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(pythonDir, '.venv', 'bin', 'python')
-
-    // Check if venv python exists
-    if (!fs.existsSync(pythonExec)) {
-      console.error('[Main] Python virtual environment not found:', pythonExec)
-      reject(new Error('Python virtual environment missing'))
+    if (!fs.existsSync(executablePath)) {
+      console.error('[Main] Content Orchestrator executable not found:', executablePath)
+      reject(new Error('Content Orchestrator executable missing'))
       return
     }
 
-    console.log(`[Main] Using Python executable: ${pythonExec}`)
+    console.log(`[Main] Using Content Orchestrator executable: ${executablePath}`)
 
-    // 🚀 --- Start Python server from .venv ---
-    serverProcess = spawn(pythonExec, ['-m', 'orchestrator.server'], {
-      cwd: pythonDir,
+    serverProcess = spawn(executablePath, [], {
       detached: false,
       stdio: ['pipe', 'pipe', 'pipe']
     })
@@ -60,32 +49,36 @@ async function startPythonServer(): Promise<void> {
 
     serverProcess.stdout.on('data', (data) => {
       const message = data.toString().trim()
-      console.log(`[Python STDOUT]: ${message}`)
-      if (message.includes('Running on') || message.includes('Server started')) {
+      console.log(`[Orchestrator STDOUT]: ${message}`)
+      if (
+        message.includes('Running on') ||
+        message.includes('Server started') ||
+        message.includes('started')
+      ) {
         resolve()
       }
     })
 
     serverProcess.stderr.on('data', (data) => {
-      console.error(`[Python STDERR]: ${data}`)
+      console.error(`[Orchestrator STDERR]: ${data}`)
     })
 
     serverProcess.on('error', (err) => {
-      console.error('[Main] Failed to start Python process:', err)
+      console.error('[Main] Failed to start Content Orchestrator process:', err)
       serverRunning = false
       reject(err)
     })
 
     serverProcess.on('close', (code) => {
-      console.log(`[Python Server] exited with code ${code}`)
+      console.log(`[Content Orchestrator] exited with code ${code}`)
       serverRunning = false
       serverProcess = null
 
       // ✅ Restart only if not quitting
       if (!isQuitting) {
-        console.log('[Main] Server closed unexpectedly — restarting...')
+        console.log('[Main] Content Orchestrator closed unexpectedly — restarting...')
         startPythonServer().catch((err) =>
-          console.error('[Main] Failed to restart Python server:', err)
+          console.error('[Main] Failed to restart Content Orchestrator:', err)
         )
       }
     })
@@ -95,10 +88,10 @@ async function startPythonServer(): Promise<void> {
   })
 }
 
-// --- 🧹 Stop Python Server ---
+// --- 🧹 Stop Content Orchestrator ---
 async function stopPythonServer(): Promise<void> {
   if (!serverProcess) return
-  console.log('[Main] Stopping Python server...')
+  console.log('[Main] Stopping Content Orchestrator...')
 
   try {
     if (process.platform === 'win32') {
@@ -109,7 +102,7 @@ async function stopPythonServer(): Promise<void> {
       }
     }
   } catch (err) {
-    console.warn('[Main] Error while stopping server:', err)
+    console.warn('[Main] Error while stopping Content Orchestrator:', err)
   }
 
   serverProcess = null
@@ -153,7 +146,9 @@ function createWindow(): void {
 
   // Enhanced error handling for renderer loading
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[Main] Failed to load renderer: ${errorDescription} (${errorCode}) - URL: ${validatedURL} ${event}`)
+    console.error(
+      `[Main] Failed to load renderer: ${errorDescription} (${errorCode}) - URL: ${validatedURL} ${event}`
+    )
   })
 
   // Load the renderer content
@@ -167,7 +162,7 @@ function createWindow(): void {
     // Production: load from built files
     const rendererPath = join(__dirname, '../renderer/index.html')
     console.log('[Main] Loading renderer from file:', rendererPath)
-    
+
     // Check if the file exists before trying to load it
     if (fs.existsSync(rendererPath)) {
       // Use loadFile for cross-platform compatibility
@@ -181,7 +176,13 @@ function createWindow(): void {
     } else {
       console.error('[Main] Renderer file not found:', rendererPath)
       // Try alternative path (in case of different build output)
-      const altPath = join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'renderer', 'index.html')
+      const altPath = join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'dist',
+        'renderer',
+        'index.html'
+      )
       if (fs.existsSync(altPath)) {
         console.log('[Main] Using alternative renderer path:', altPath)
         mainWindow.loadFile(altPath)
