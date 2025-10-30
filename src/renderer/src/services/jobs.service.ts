@@ -74,6 +74,32 @@ export const createJob = async (formData: FormData): Promise<{ job_id: string }>
 }
 
 /**
+ * Upload to an existing job
+ */
+export const uploadFilesToServer = async (jobId: string): Promise<{ message: string }> => {
+  try {
+    const serverInfo = await window.api.getServerInfo()
+    if (serverInfo?.port) {
+      const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs/${jobId}/upload`, {
+        method: 'POST'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        console.log(errorData)
+        const errorMessage = errorData?.detail || 'Failed to upload to job'
+        throw new Error(errorMessage)
+      }
+      return response.json()
+    }
+    throw new Error('Server not available')
+  } catch (error) {
+    console.error('Failed to upload to job:', error)
+    throw error
+  }
+}
+
+/**
  * Rerun an existing job
  */
 export const rerunJob = async (jobId: string): Promise<{ job_id: string }> => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Button } from './ui/button'
 import type { DashboardStats } from '../types'
 import { fetchDashboardStats } from '../services'
 import { Clock, CheckCircle2, XCircle, Upload, TrendingUp, Activity } from 'lucide-react'
@@ -64,12 +65,10 @@ export default function Dashboard(): React.JSX.Element {
               Overview of your content processing pipeline
             </p>
           </div>
-          <button
-            onClick={() => serverPort && loadStats(serverPort)}
-            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors shadow-sm"
-          >
+          <Button onClick={() => serverPort && loadStats(serverPort)} size="sm" className="gap-2">
+            <Activity className="h-4 w-4" />
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 

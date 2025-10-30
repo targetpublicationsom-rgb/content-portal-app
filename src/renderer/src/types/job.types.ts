@@ -18,7 +18,7 @@ export interface Job {
   standard_name: string | null
   subject_id: number | null
   subject_name: string | null
-  upload_state: 'READY' | 'BLOCKED'
+  upload_state: 'READY' | 'BLOCKED' | 'UPLOADED'
   upload_receipt_url: string | null
   counts: JobCounts
 }

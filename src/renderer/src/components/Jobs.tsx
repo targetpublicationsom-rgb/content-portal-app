@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import type { Job, JobsResponse, TaxonomyFilters } from '../types'
 import { useTaxonomyData } from '../hooks'
 import { DEFAULT_PAGE_SIZE } from '../constants'
+import { uploadFilesToServer } from '../services'
 
 export default function Jobs(): React.JSX.Element {
   const navigate = useNavigate()
@@ -39,6 +40,9 @@ export default function Jobs(): React.JSX.Element {
   const [showJobProgress, setShowJobProgress] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string>('')
   const [showFilters, setShowFilters] = useState(false)
+  const [uploadingJobs, setUploadingJobs] = useState<Set<string>>(new Set())
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadingJobId, setUploadingJobId] = useState<string>('')
 
   // Use the custom hook for taxonomy data
   const {
@@ -171,6 +175,35 @@ export default function Jobs(): React.JSX.Element {
       }
     } catch (error) {
       console.error('Failed to rerun job:', error)
+    }
+  }
+
+  const handleUploadToJob = async (jobId: string): Promise<void> => {
+    try {
+      // Show upload modal and set the current job ID
+      setUploadingJobId(jobId)
+      setShowUploadModal(true)
+
+      // Add job to uploading set
+      setUploadingJobs((prev) => new Set(prev).add(jobId))
+
+      const result = await uploadFilesToServer(jobId)
+      toast.success(result.message || 'Files uploaded successfully!')
+
+      // Refresh jobs data to get updated status
+      fetchJobsData()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+      toast.error(errorMessage)
+    } finally {
+      // Remove job from uploading set and hide modal
+      setUploadingJobs((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(jobId)
+        return newSet
+      })
+      setShowUploadModal(false)
+      setUploadingJobId('')
     }
   }
 
@@ -666,20 +699,30 @@ export default function Jobs(): React.JSX.Element {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => setShowUpload(true)}
+                                    onClick={() => handleUploadToJob(job.job_id)}
                                     className="flex items-center gap-2"
-                                    disabled={job.upload_state === 'BLOCKED'}
+                                    disabled={
+                                      job.upload_state !== 'READY' || uploadingJobs.has(job.job_id)
+                                    }
                                   >
-                                    <Upload className="h-4 w-4" />
+                                    {uploadingJobs.has(job.job_id) ? (
+                                      <RotateCw className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Upload className="h-4 w-4" />
+                                    )}
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p>
-                                    {job.state === 'RUNNING'
-                                      ? 'Job is currently processing'
-                                      : !job.gate_passed
-                                        ? 'Upload is only available for jobs that passed the gate'
-                                        : 'Upload new files'}
+                                    {uploadingJobs.has(job.job_id)
+                                      ? 'Uploading files...'
+                                      : job.upload_state !== 'READY'
+                                        ? job.upload_state === 'BLOCKED'
+                                          ? 'Upload is blocked for this job'
+                                          : job.upload_state === 'UPLOADED'
+                                            ? 'Files have already been uploaded'
+                                            : 'Upload not available'
+                                        : 'Upload files to job'}
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
@@ -787,6 +830,29 @@ export default function Jobs(): React.JSX.Element {
                 style={{ minHeight: '500px' }}
                 dangerouslySetInnerHTML={{ __html: reportContent }}
               />
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Upload Loading Modal */}
+        <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
+          <DialogContent className="sm:max-w-md" showCloseButton={false}>
+            <DialogHeader className="text-center">
+              <DialogTitle className="flex items-center justify-center gap-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                Uploading Files
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-6 text-center space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Uploading files to Server :{' '}
+                  <span className="font-mono font-medium">{uploadingJobId}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Please wait while we process your upload...
+                </p>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
