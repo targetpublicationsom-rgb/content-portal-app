@@ -502,7 +502,7 @@ export default function Jobs(): React.JSX.Element {
           </div>
 
           {/* Jobs Table Section */}
-          <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+          <div className="bg-card rounded-xl border shadow-sm overflow-hidden mb-5">
             <div className="overflow-auto custom-scrollbar">
               <Table>
                 <TableHeader>

@@ -16,6 +16,22 @@ let serverStarting = false
 let isQuitting = false
 const DEFAULT_PORT = 6284
 
+// Handle single instance - prevent multiple instances from running
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // Someone tried to run a second instance, focus our window instead
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 async function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     serverStarting = true
@@ -192,8 +208,16 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow?.maximize()
-    mainWindow?.show()
+    // Check if app should start minimized (can be configured later)
+    const startMinimized = process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
+    
+    if (startMinimized) {
+      console.log('[Main] Starting minimized to tray')
+      // Don't show the window, just keep it ready
+    } else {
+      mainWindow?.maximize()
+      mainWindow?.show()
+    }
   })
 
   mainWindow.on('close', (event) => {
@@ -201,6 +225,14 @@ function createWindow(): void {
       event.preventDefault()
       mainWindow?.hide()
       console.log('[Main] Window hidden to tray')
+      
+      // Show tray notification on first hide (Windows only)
+      if (process.platform === 'win32' && tray) {
+        tray.displayBalloon({
+          title: 'Content Portal',
+          content: 'Application was minimized to tray. Click the tray icon to restore.'
+        })
+      }
     }
   })
 
@@ -258,35 +290,113 @@ function createWindow(): void {
 
 // --- 🧭 Create Tray ---
 function createTray(): void {
-  const trayIcon = nativeImage.createFromPath(icon)
-  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }))
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Show App',
-      click: () => {
-        mainWindow?.show()
-        mainWindow?.focus()
-      }
-    },
-    {
-      label: 'Quit',
-      click: async () => {
-        isQuitting = true
-        console.log('[Main] Quitting from tray...')
-        await stopPythonServer()
-        app.quit()
-      }
+  try {
+    let trayIconPath: string
+    
+    if (is.dev) {
+      // Development mode - use icon from resources
+      trayIconPath = path.join(process.cwd(), 'resources', 'icon.png')
+    } else {
+      // Production mode - check multiple possible locations
+      const possiblePaths = [
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'icon.png'),
+        path.join(process.resourcesPath, 'icon.png'),
+        path.join(__dirname, '../../resources/icon.png'),
+        icon // fallback to the imported icon
+      ]
+      
+      trayIconPath = possiblePaths.find((p) => fs.existsSync(p)) || icon
     }
-  ])
+    
+    console.log('[Main] Using tray icon path:', trayIconPath)
+    
+    const trayIcon = nativeImage.createFromPath(trayIconPath)
+    
+    // Ensure the icon is properly resized for system tray
+    const resizedIcon = trayIcon.resize({ width: 16, height: 16 })
+    
+    // Create tray with the icon, with better error handling
+    tray = new Tray(resizedIcon.isEmpty() ? trayIcon : resizedIcon)
+    
+    if (tray.isDestroyed()) {
+      console.error('[Main] Failed to create tray')
+      return
+    }
 
-  tray.setToolTip('Content Portal')
-  tray.setContextMenu(menu)
+    const menu = Menu.buildFromTemplate([
+      {
+        label: 'Show Content Portal',
+        click: () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore()
+            mainWindow.show()
+            mainWindow.focus()
+          }
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Hide to Tray',
+        click: () => {
+          mainWindow?.hide()
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Quit Content Portal',
+        click: async () => {
+          isQuitting = true
+          console.log('[Main] Quitting from tray...')
+          await stopPythonServer()
+          app.quit()
+        }
+      }
+    ])
 
-  tray.on('double-click', () => {
-    mainWindow?.show()
-    mainWindow?.focus()
-  })
+    tray.setToolTip('Content Portal - Content Processing Application')
+    tray.setContextMenu(menu)
+
+    // Handle tray click events
+    tray.on('click', () => {
+      // Single click to show/hide (Windows behavior)
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide()
+        } else {
+          if (mainWindow.isMinimized()) mainWindow.restore()
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    })
+    
+    tray.on('double-click', () => {
+      // Double click to show and focus
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    })
+    
+    console.log('[Main] System tray created successfully')
+    
+    // Optional: Show a notification that tray is ready (only on first run)
+    if (process.platform === 'win32') {
+      setTimeout(() => {
+        tray?.displayBalloon({
+          title: 'Content Portal',
+          content: 'Application is running in the system tray'
+        })
+      }, 2000)
+    }
+  } catch (error) {
+    console.error('[Main] Failed to create system tray:', error)
+  }
 }
 
 // --- 🚀 App Ready ---
@@ -313,13 +423,16 @@ ipcMain.handle('read-log-file', async (_, filePath: string) => {
 })
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.targetpublications.contentportal')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Create tray first to ensure it's available
   createTray()
+  
+  // Then create window
   createWindow()
 
   // Start server after window is created so we can send status updates
@@ -344,6 +457,13 @@ app.on('before-quit', async (event) => {
   isQuitting = true
   console.log('[Main] Stopping Python server before quit...')
   await stopPythonServer()
+  
+  // Clean up tray
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+  
   console.log('[Main] Python server stopped')
   app.quit()
 })
