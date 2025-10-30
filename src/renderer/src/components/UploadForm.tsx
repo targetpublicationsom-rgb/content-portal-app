@@ -193,7 +193,7 @@ export default function UploadForm({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto">
+        <CardContent className="flex-1 overflow-y-auto mt-3">
           <Form {...form}>
             <form id="uploadForm" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <div className="space-y-6">

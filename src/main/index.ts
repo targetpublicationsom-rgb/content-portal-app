@@ -17,8 +17,14 @@ const DEFAULT_PORT = 6284
 
 async function startPythonServer(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const executablePath = path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
+    // Use proper path resolution for both development and production
+    const executablePath = is.dev 
+      ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
+      : path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'content-orchestrator.exe')
     console.log(`[Main] Starting Content Orchestrator: ${executablePath}`)
+    console.log(`[Main] Is development: ${is.dev}`)
+    console.log(`[Main] Resources path: ${process.resourcesPath}`)
+    console.log(`[Main] Current working directory: ${process.cwd()}`)
 
     try {
       if (process.platform === 'win32') {

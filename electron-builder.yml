@@ -5,6 +5,7 @@ directories:
 files:
   - 'out/**/*'
   - 'node_modules/**/*'
+  - 'tools/**/*'
   - 'package.json'
   - '!**/.vscode/*'
   - '!src/*'
@@ -14,13 +15,27 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - tools/**
 win:
   executableName: content-portal-windows-app
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  createStartMenuShortcut: true
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+portable:
+  artifactName: ${name}-${version}-portable.${ext}
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
