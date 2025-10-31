@@ -4,6 +4,11 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import {
+  getJobStateBadgeStyles,
+  getGateStatusBadgeStyles,
+  getStageStatusBadgeStyles
+} from '../lib/badge-utils'
 import type { JobDetails as JobDetailsType } from '../types'
 
 export default function JobDetails(): React.JSX.Element {
@@ -87,15 +92,7 @@ export default function JobDetails(): React.JSX.Element {
               <div className="mt-1">
                 <Badge
                   variant="outline"
-                  className={`text-sm px-3 py-1.5 font-semibold ${
-                    job.state === 'DONE'
-                      ? 'bg-green-50 text-green-700 border-green-200'
-                      : job.state === 'FAILED'
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : job.state === 'PROCESSING'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                  }`}
+                  className={`text-sm px-3 py-1.5 font-semibold ${getJobStateBadgeStyles(job.state)}`}
                 >
                   {job.state.toLocaleUpperCase()}
                 </Badge>
@@ -108,11 +105,7 @@ export default function JobDetails(): React.JSX.Element {
               <div className="mt-1">
                 <Badge
                   variant="outline"
-                  className={`text-sm px-3 py-1.5 font-semibold ${
-                    job.gate_passed
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}
+                  className={`text-sm px-3 py-1.5 font-semibold ${getGateStatusBadgeStyles(job.gate_passed)}`}
                 >
                   Gate {job.gate_passed ? 'passed' : 'failed'}
                 </Badge>
@@ -201,11 +194,7 @@ export default function JobDetails(): React.JSX.Element {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <Badge
                         variant="outline"
-                        className={`capitalize font-medium ${
-                          stage.status === 'ok'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-red-50 text-red-700'
-                        }`}
+                        className={`capitalize font-medium ${getStageStatusBadgeStyles(stage.status)}`}
                       >
                         {stage.status}
                       </Badge>

@@ -24,6 +24,7 @@ import type { Job, JobsResponse, TaxonomyFilters } from '../types'
 import { useTaxonomyData } from '../hooks'
 import { DEFAULT_PAGE_SIZE } from '../constants'
 import { uploadFilesToServer } from '../services'
+import { getJobStateBadgeStyles, getGateStatusBadgeStyles } from '../lib/badge-utils'
 
 export default function Jobs(): React.JSX.Element {
   const navigate = useNavigate()
@@ -258,19 +259,10 @@ export default function Jobs(): React.JSX.Element {
   }
 
   const getStatusBadge = (state: Job['state']): React.JSX.Element => {
-    const styles: Record<string, string> = {
-      PENDING: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
-      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
-      DONE: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
-      FAILED: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
-      RUNNING: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
-      UPLOADED: 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
-    }
-
     return (
       <Badge
         variant="outline"
-        className={`capitalize font-medium ${styles[state] || 'bg-gray-50 text-gray-700 border-gray-100'}`}
+        className={`capitalize font-medium ${getJobStateBadgeStyles(state)}`}
       >
         {state.toLowerCase()}
       </Badge>
@@ -661,11 +653,7 @@ export default function Jobs(): React.JSX.Element {
                           {
                             <Badge
                               variant="outline"
-                              className={`capitalize font-medium ${
-                                job.gate_passed
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                  : 'bg-rose-50 text-rose-700 border-rose-100'
-                              }`}
+                              className={`capitalize font-medium ${getGateStatusBadgeStyles(job.gate_passed)}`}
                             >
                               Gate {job.gate_passed ? 'passed' : 'failed'}
                             </Badge>
