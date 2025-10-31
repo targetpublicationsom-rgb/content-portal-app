@@ -6,6 +6,8 @@ files:
   - 'out/**/*'
   - 'node_modules/**/*'
   - 'tools/**/*'
+  - 'resources/**/*'
+  - 'build/**/*'
   - 'package.json'
   - '!**/.vscode/*'
   - '!src/*'

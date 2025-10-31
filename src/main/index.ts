@@ -321,32 +321,152 @@ function createWindow(): void {
 // --- 🧭 Create Tray ---
 function createTray(): void {
   try {
-    let trayIconPath: string
+    let trayIcon: Electron.NativeImage
 
     if (is.dev) {
       // Development mode - use icon from resources
-      trayIconPath = path.join(process.cwd(), 'resources', 'icon.png')
-    } else {
-      // Production mode - check multiple possible locations
-      const possiblePaths = [
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'icon.png'),
-        path.join(process.resourcesPath, 'icon.png'),
-        path.join(__dirname, '../../resources/icon.png'),
-        icon // fallback to the imported icon
-      ]
+      const trayIconPath = path.join(process.cwd(), 'resources', 'icon.png')
+      console.log('[Main] Dev mode tray icon path:', trayIconPath)
 
-      trayIconPath = possiblePaths.find((p) => fs.existsSync(p)) || icon
+      if (fs.existsSync(trayIconPath)) {
+        trayIcon = nativeImage.createFromPath(trayIconPath)
+      } else {
+        console.warn('[Main] Dev icon not found, using imported icon')
+        trayIcon = nativeImage.createFromPath(icon)
+      }
+    } else {
+      
+
+      // Prefer ICO format on Windows for better system tray compatibility
+      const iconFormats =
+        process.platform === 'win32' ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico']
+
+      const possiblePaths: string[] = []
+      for (const format of iconFormats) {
+        possiblePaths.push(
+          // Standard Electron app locations
+          path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', format),
+          path.join(process.resourcesPath, 'resources', format),
+          path.join(process.resourcesPath, format),
+          // Build resources (for ICO files)
+          path.join(process.resourcesPath, 'app.asar.unpacked', 'build', format),
+          path.join(process.resourcesPath, 'build', format),
+          // Alternative build locations
+          path.join(__dirname, '../../resources/', format),
+          path.join(__dirname, '../resources/', format),
+          path.join(__dirname, '../../build/', format),
+          path.join(__dirname, '../build/', format),
+          path.join(path.dirname(process.execPath), 'resources', format),
+          // App installation directory
+          path.join(path.dirname(process.execPath), '..', 'resources', format),
+          path.join(path.dirname(process.execPath), '..', 'build', format)
+        )
+      }
+
+      let foundPath: string | null = null
+      for (const iconPath of possiblePaths) {
+        console.log(
+          '[Main] Checking tray icon path:',
+          iconPath,
+          '- exists:',
+          fs.existsSync(iconPath)
+        )
+        if (fs.existsSync(iconPath)) {
+          foundPath = iconPath
+          break
+        }
+      }
+
+      if (foundPath) {
+        console.log('[Main] Using found tray icon path:', foundPath)
+        trayIcon = nativeImage.createFromPath(foundPath)
+
+        // Validate the loaded icon
+        console.log('[Main] Loaded icon - Empty?', trayIcon.isEmpty(), 'Size:', trayIcon.getSize())
+
+        // If the icon appears to be invalid, try alternative loading
+        if (
+          trayIcon.isEmpty() ||
+          trayIcon.getSize().width === 0 ||
+          trayIcon.getSize().height === 0
+        ) {
+          console.warn('[Main] Icon appears invalid, trying to load as buffer')
+          try {
+            const iconBuffer = fs.readFileSync(foundPath)
+            trayIcon = nativeImage.createFromBuffer(iconBuffer)
+            console.log(
+              '[Main] Buffer-loaded icon - Empty?',
+              trayIcon.isEmpty(),
+              'Size:',
+              trayIcon.getSize()
+            )
+          } catch (bufferError) {
+            console.error('[Main] Failed to load icon as buffer:', bufferError)
+          }
+        }
+      } else {
+        console.log('[Main] No icon file found in production, using imported icon')
+        console.log('[Main] Imported icon value:', icon)
+
+        // The imported icon should be a resolved path in production
+        if (typeof icon === 'string') {
+          trayIcon = nativeImage.createFromPath(icon)
+
+          // Also validate the imported icon
+          if (trayIcon.isEmpty()) {
+            console.warn('[Main] Imported icon is empty, trying buffer approach')
+            try {
+              const iconBuffer = fs.readFileSync(icon)
+              trayIcon = nativeImage.createFromBuffer(iconBuffer)
+            } catch (bufferError) {
+              console.error('[Main] Failed to load imported icon as buffer:', bufferError)
+            }
+          }
+        } else {
+          // If icon is not a string, create empty and handle in fallback
+          trayIcon = nativeImage.createEmpty()
+        }
+      }
     }
 
-    console.log('[Main] Using tray icon path:', trayIconPath)
+    // Validate the icon was created successfully
+    if (trayIcon.isEmpty()) {
+      console.error('[Main] Tray icon is empty, trying alternative approach')
+      // If all else fails, try using the imported icon directly
+      try {
+        if (typeof icon === 'string') {
+          trayIcon = nativeImage.createFromPath(icon)
+        }
 
-    const trayIcon = nativeImage.createFromPath(trayIconPath)
+        // If still empty, create a simple fallback
+        if (trayIcon.isEmpty()) {
+          console.warn('[Main] Creating minimal fallback tray icon')
+          // Create a simple 16x16 white square as absolute fallback
+          const size = 16
+          const buffer = Buffer.alloc(size * size * 4, 255) // RGBA white
+          trayIcon = nativeImage.createFromBuffer(buffer, { width: size, height: size })
+        }
+      } catch (error) {
+        console.error('[Main] Failed to create fallback icon:', error)
+        // If everything fails, try creating empty and let system handle it
+        trayIcon = nativeImage.createEmpty()
+      }
+    }
 
-    // Ensure the icon is properly resized for system tray
-    const resizedIcon = trayIcon.resize({ width: 16, height: 16 })
+    // Resize for system tray (Windows needs 16x16)
+    if (process.platform === 'win32') {
+      trayIcon = trayIcon.resize({ width: 16, height: 16 })
+    }
 
-    // Create tray with the icon, with better error handling
-    tray = new Tray(resizedIcon.isEmpty() ? trayIcon : resizedIcon)
+    console.log(
+      '[Main] Creating tray with icon. Empty?',
+      trayIcon.isEmpty(),
+      'Size:',
+      trayIcon.getSize()
+    )
+
+    // Create tray with the icon
+    tray = new Tray(trayIcon)
 
     if (tray.isDestroyed()) {
       console.error('[Main] Failed to create tray')
