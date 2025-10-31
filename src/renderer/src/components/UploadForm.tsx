@@ -133,6 +133,16 @@ export default function UploadForm({
   onClose,
   onSuccess
 }: UploadFormProps): React.JSX.Element {
+  // Edition options mapping
+  const editions = [
+    { id: '1', name: 'First Edition' },
+    { id: '2', name: 'Second Edition' },
+    { id: '3', name: 'Third Edition' },
+    { id: '4', name: 'Revised Edition' },
+    { id: '5', name: 'Updated Edition' },
+    { id: '6', name: 'Latest Edition' }
+  ]
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -234,11 +244,13 @@ export default function UploadForm({
 
       // Add optional fields
       if (data.tags && data.tags.length > 0) {
-        formData.append('tags', JSON.stringify(data.tags))
+        formData.append('tags', data.tags.join(','))
       }
-      
+
       if (data.editionId) {
         formData.append('edition_id', data.editionId)
+        const selectedEdition = editions.find((e) => e.id === data.editionId)
+        formData.append('edition', selectedEdition?.name || '')
       }
 
       // Submit the job using the service
@@ -282,7 +294,7 @@ export default function UploadForm({
         <CardContent className="flex-1 overflow-y-auto mt-3">
           <Form {...form}>
             <form id="uploadForm" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-4"> 
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -482,10 +494,14 @@ export default function UploadForm({
                         <div className="space-y-1">
                           <Select value={field.value} onValueChange={field.onChange}>
                             <SelectTrigger className="w-full h-10">
-                              <SelectValue placeholder="Select edition (coming soon)" />
+                              <SelectValue placeholder="Select edition" />
                             </SelectTrigger>
                             <SelectContent>
-                              {/* Edition options will be added in the future */}
+                              {editions.map((edition) => (
+                                <SelectItem key={edition.id} value={edition.id}>
+                                  {edition.name}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
