@@ -28,5 +28,5 @@ export const STAGE_STATUSES = {
 } as const
 
 // Default pagination
-export const DEFAULT_PAGE_SIZE = 8
-export const DEFAULT_LIMIT = 20
+export const DEFAULT_PAGE_SIZE = 10
+export const DEFAULT_LIMIT = 10

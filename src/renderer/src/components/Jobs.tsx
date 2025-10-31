@@ -31,9 +31,12 @@ export default function Jobs(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
   const [serverPort, setServerPort] = useState<number>()
-  const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(DEFAULT_PAGE_SIZE)
-  const [total, setTotal] = useState(0)
+  const [currentCursor, setCurrentCursor] = useState<string | null>(null)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [previousCursors, setPreviousCursors] = useState<string[]>([])
+  const [hasNextPage, setHasNextPage] = useState(false)
+  const [hasPreviousPage, setHasPreviousPage] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState<string>('')
   const [reportTitle, setReportTitle] = useState('')
@@ -43,6 +46,11 @@ export default function Jobs(): React.JSX.Element {
   const [uploadingJobs, setUploadingJobs] = useState<Set<string>>(new Set())
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadingJobId, setUploadingJobId] = useState<string>('')
+  const [currentPageNumber, setCurrentPageNumber] = useState(1)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  // Fixed sorting by created date
+  const sortBy = 'created_at'
 
   // Use the custom hook for taxonomy data
   const {
@@ -94,20 +102,27 @@ export default function Jobs(): React.JSX.Element {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
         setServerPort(serverInfo.port)
-        fetchJobsData()
+        fetchJobsData(null, true) // Reset pagination when filters change
       }
     }
     init()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, filters]) // Refetch when page or filters change
+  }, [filters, sortOrder]) // Refetch when filters or sort order change
 
-  const fetchJobsData = async (): Promise<void> => {
+  const fetchJobsData = async (cursor?: string | null, reset = false): Promise<void> => {
     try {
       const serverInfo = await window.api.getServerInfo()
       if (serverInfo?.port) {
         const params = new URLSearchParams({
-          limit: pageSize.toString()
+          limit: pageSize.toString(),
+          sort: sortBy,
+          order: sortOrder
         })
+
+        // Add cursor for pagination if provided
+        if (cursor) {
+          params.append('cursor', cursor)
+        }
 
         if (filters.state && filters.state !== 'all') params.append('state', filters.state)
         if (filters.mode && filters.mode !== 'all') params.append('mode', filters.mode)
@@ -129,7 +144,22 @@ export default function Jobs(): React.JSX.Element {
         if (response.ok) {
           const data: JobsResponse = await response.json()
           setJobs(data.items || [])
-          setTotal(data.items.length)
+
+          // Update pagination state
+          setNextCursor(data.next_cursor)
+          setHasNextPage(!!data.next_cursor)
+
+          if (reset) {
+            // Reset pagination when filters change
+            setCurrentCursor(null)
+            setPreviousCursors([])
+            setHasPreviousPage(false)
+            setCurrentPageNumber(1)
+          } else {
+            // Update current cursor and previous cursors for navigation
+            setCurrentCursor(cursor || null)
+            setHasPreviousPage(previousCursors.length > 0 || !!cursor)
+          }
         }
       }
     } catch (error) {
@@ -139,8 +169,28 @@ export default function Jobs(): React.JSX.Element {
     }
   }
 
-  const handlePageChange = (page: number): void => {
-    setCurrentPage(page)
+  const handleNextPage = (): void => {
+    if (nextCursor) {
+      if (currentCursor) {
+        setPreviousCursors((prev) => [...prev, currentCursor])
+      }
+      setCurrentPageNumber((prev) => prev + 1)
+      fetchJobsData(nextCursor)
+    }
+  }
+
+  const handlePreviousPage = (): void => {
+    if (previousCursors.length > 0) {
+      const prevCursor = previousCursors[previousCursors.length - 1]
+      setPreviousCursors((prev) => prev.slice(0, -1))
+      setCurrentPageNumber((prev) => prev - 1)
+      fetchJobsData(prevCursor)
+    } else {
+      // Go to first page
+      setPreviousCursors([])
+      setCurrentPageNumber(1)
+      fetchJobsData(null, true)
+    }
   }
 
   const handleViewReport = async (filePath: string, title: string): Promise<void> => {
@@ -273,18 +323,33 @@ export default function Jobs(): React.JSX.Element {
                       subject_id: '',
                       searchQuery: ''
                     })
-                    setCurrentPage(1)
+                    fetchJobsData(null, true)
                   }}
                   className="px-4 py-2 text-sm font-medium border-2 hover:bg-muted/50 rounded-lg transition-colors"
                 >
                   Clear Filters
                 </Button>
+                <Select
+                  value={sortOrder}
+                  onValueChange={(value: 'asc' | 'desc') => {
+                    setSortOrder(value)
+                    fetchJobsData(null, true)
+                  }}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Newest</SelectItem>
+                    <SelectItem value="asc">Oldest</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {
                     setLoading(true)
-                    fetchJobsData()
+                    fetchJobsData(null, true)
                   }}
                   className="px-4 py-2 text-sm font-medium border-2 hover:bg-muted/50 rounded-lg transition-colors"
                 >
@@ -318,7 +383,7 @@ export default function Jobs(): React.JSX.Element {
                   value={filters.searchQuery}
                   onChange={(e) => {
                     setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
-                    setCurrentPage(1)
+                    fetchJobsData(null, true)
                   }}
                   className="flex-1"
                 />
@@ -328,7 +393,7 @@ export default function Jobs(): React.JSX.Element {
                     size="icon"
                     onClick={() => {
                       setFilters((prev) => ({ ...prev, searchQuery: '' }))
-                      setCurrentPage(1)
+                      fetchJobsData(null, true)
                     }}
                   >
                     <X className="h-4 w-4" />
@@ -339,7 +404,7 @@ export default function Jobs(): React.JSX.Element {
                     value={filters.state}
                     onValueChange={(value) => {
                       setFilters((prev) => ({ ...prev, state: value }))
-                      setCurrentPage(1)
+                      fetchJobsData(null, true)
                     }}
                   >
                     <SelectTrigger className="w-full">
@@ -358,7 +423,7 @@ export default function Jobs(): React.JSX.Element {
                     value={filters.mode}
                     onValueChange={(value) => {
                       setFilters((prev) => ({ ...prev, mode: value }))
-                      setCurrentPage(1)
+                      fetchJobsData(null, true)
                     }}
                   >
                     <SelectTrigger className="w-full">
@@ -388,7 +453,7 @@ export default function Jobs(): React.JSX.Element {
                             standard_id: '',
                             subject_id: ''
                           }))
-                          setCurrentPage(1)
+                          fetchJobsData(null, true)
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -416,7 +481,7 @@ export default function Jobs(): React.JSX.Element {
                             standard_id: '',
                             subject_id: ''
                           }))
-                          setCurrentPage(1)
+                          fetchJobsData(null, true)
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -444,7 +509,7 @@ export default function Jobs(): React.JSX.Element {
                             standard_id: '',
                             subject_id: ''
                           }))
-                          setCurrentPage(1)
+                          fetchJobsData(null, true)
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -475,7 +540,7 @@ export default function Jobs(): React.JSX.Element {
                             standard_id: value,
                             subject_id: ''
                           }))
-                          setCurrentPage(1)
+                          fetchJobsData(null, true)
                         }}
                         disabled={
                           loadingOptions.standards ||
@@ -507,7 +572,7 @@ export default function Jobs(): React.JSX.Element {
                         value={filters.subject_id}
                         onValueChange={(value) => {
                           setFilters((prev) => ({ ...prev, subject_id: value }))
-                          setCurrentPage(1)
+                          fetchJobsData(null, true)
                         }}
                         disabled={
                           loadingOptions.subjects ||
@@ -741,40 +806,25 @@ export default function Jobs(): React.JSX.Element {
               <div className="border-t px-4 py-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="text-sm text-muted-foreground">
-                    Showing {(currentPage - 1) * pageSize + 1} to{' '}
-                    {Math.min(currentPage * pageSize, total)} of {total} entries
+                    Page {currentPageNumber} - Showing {jobs.length} jobs
+                    {hasNextPage && ' (more available)'}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
+                      onClick={handlePreviousPage}
+                      disabled={!hasPreviousPage}
                     >
-                      {'Previous'}
+                      Previous
                     </Button>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: Math.ceil(total / pageSize) }, (_, i) => i + 1).map(
-                        (page) => (
-                          <Button
-                            key={page}
-                            variant={currentPage === page ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(page)}
-                            className="h-8 w-8 p-0"
-                          >
-                            {page}
-                          </Button>
-                        )
-                      )}
-                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage >= Math.ceil(total / pageSize)}
+                      onClick={handleNextPage}
+                      disabled={!hasNextPage}
                     >
-                      {'Next'}
+                      Next
                     </Button>
                   </div>
                 </div>
