@@ -197,7 +197,6 @@ export default function Dashboard(): React.JSX.Element {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
-                      <div className="h-3 w-3 bg-blue-500 rounded-full animate-pulse"></div>
                       Today
                     </CardTitle>
                     <CardDescription className="text-base">
@@ -251,7 +250,6 @@ export default function Dashboard(): React.JSX.Element {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
-                      <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
                       This Week
                     </CardTitle>
                     <CardDescription className="text-base">
