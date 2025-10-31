@@ -6,7 +6,9 @@ import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Form, FormField, FormItem, FormMessage } from './ui/form'
-import { Upload } from 'lucide-react'
+import { Input } from './ui/input'
+import { Badge } from './ui/badge'
+import { Upload, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useTaxonomyData } from '../hooks'
 import { createJob } from '../services'
@@ -19,6 +21,8 @@ const formSchema = z
     standard: z.string().min(1, 'Standard is required'),
     subject: z.string().min(1, 'Subject is required'),
     fileFormat: z.enum(['single', 'two-file']).describe('Please select a file format'),
+    tags: z.array(z.string()).optional(),
+    editionId: z.string().optional(),
     questionFile: z.custom<File>(
       (val) => {
         if (!(val instanceof File)) return false
@@ -54,6 +58,76 @@ interface UploadFormProps {
   onSuccess?: (jobId: string) => void
 }
 
+// Tags Input Component
+const TagsInput = ({
+  value = [],
+  onChange,
+  placeholder = 'Add tags...'
+}: {
+  value?: string[]
+  onChange: (tags: string[]) => void
+  placeholder?: string
+}): React.JSX.Element => {
+  const [inputValue, setInputValue] = useState('')
+
+  const addTag = (tag: string): void => {
+    const trimmedTag = tag.trim()
+    if (trimmedTag && !value.includes(trimmedTag)) {
+      onChange([...value, trimmedTag])
+    }
+    setInputValue('')
+  }
+
+  const removeTag = (tagToRemove: string): void => {
+    onChange(value.filter((tag) => tag !== tagToRemove))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addTag(inputValue)
+    } else if (e.key === 'Backspace' && !inputValue && value.length > 0) {
+      removeTag(value[value.length - 1])
+    }
+  }
+
+  return (
+    <div className="flex min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+      <div className="flex flex-wrap gap-1 items-center flex-1">
+        {value.map((tag, index) => (
+          <Badge
+            key={index}
+            variant="secondary"
+            className="bg-muted hover:bg-muted/80 text-foreground px-2 py-1 text-xs font-medium"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              className="ml-1 hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+        <Input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => {
+            if (inputValue.trim()) {
+              addTag(inputValue)
+            }
+          }}
+          placeholder={value.length === 0 ? placeholder : ''}
+          className="border-0 p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 flex-1 min-w-[120px] bg-transparent"
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function UploadForm({
   open,
   onClose,
@@ -69,7 +143,9 @@ export default function UploadForm({
       subject: '',
       fileFormat: 'single',
       questionFile: undefined,
-      answerFile: undefined
+      answerFile: undefined,
+      tags: [],
+      editionId: ''
     }
   })
 
@@ -156,6 +232,15 @@ export default function UploadForm({
       const selectedSubject = subjects.find((s) => s.id == data.subject)
       formData.append('subject_name', selectedSubject?.name || '')
 
+      // Add optional fields
+      if (data.tags && data.tags.length > 0) {
+        formData.append('tags', JSON.stringify(data.tags))
+      }
+      
+      if (data.editionId) {
+        formData.append('edition_id', data.editionId)
+      }
+
       // Submit the job using the service
       const response = await createJob(formData)
 
@@ -169,9 +254,10 @@ export default function UploadForm({
       if (response.job_id) {
         onSuccess?.(response.job_id)
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('submit', e)
-      toast.error(e.message)
+      const errorMessage = e instanceof Error ? e.message : 'An error occurred'
+      toast.error(errorMessage)
       setErrors((prev) => ({ ...prev, networkError: true }))
     } finally {
       setLoading(false)
@@ -196,33 +282,39 @@ export default function UploadForm({
         <CardContent className="flex-1 overflow-y-auto mt-3">
           <Form {...form}>
             <form id="uploadForm" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-6">
+              <div className="space-y-4"> 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="stream"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">Stream *</span>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={loadingOptions.streams}
-                        >
-                          <SelectTrigger className="w-full h-10">
-                            <SelectValue
-                              placeholder={loadingOptions.streams ? 'Loading...' : 'Select stream'}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {streams.map((s) => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                {s?.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Stream *
+                        </span>
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={loadingOptions.streams}
+                          >
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue
+                                placeholder={
+                                  loadingOptions.streams ? 'Loading...' : 'Select stream'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {streams.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  {s?.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -231,27 +323,31 @@ export default function UploadForm({
                     control={form.control}
                     name="board"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">Board *</span>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={loadingOptions.boards}
-                        >
-                          <SelectTrigger className="w-full h-10">
-                            <SelectValue
-                              placeholder={loadingOptions.boards ? 'Loading...' : 'Select board'}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {boards.map((b) => (
-                              <SelectItem key={b.id} value={String(b.id)}>
-                                {b.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Board *
+                        </span>
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={loadingOptions.boards}
+                          >
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue
+                                placeholder={loadingOptions.boards ? 'Loading...' : 'Select board'}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {boards.map((b) => (
+                                <SelectItem key={b.id} value={String(b.id)}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -260,27 +356,33 @@ export default function UploadForm({
                     control={form.control}
                     name="medium"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">Medium *</span>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={loadingOptions.mediums}
-                        >
-                          <SelectTrigger className="w-full h-10">
-                            <SelectValue
-                              placeholder={loadingOptions.mediums ? 'Loading...' : 'Select medium'}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {mediums.map((m) => (
-                              <SelectItem key={m.id} value={String(m.id)}>
-                                {m.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Medium *
+                        </span>
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={loadingOptions.mediums}
+                          >
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue
+                                placeholder={
+                                  loadingOptions.mediums ? 'Loading...' : 'Select medium'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {mediums.map((m) => (
+                                <SelectItem key={m.id} value={String(m.id)}>
+                                  {m.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -289,39 +391,41 @@ export default function UploadForm({
                     control={form.control}
                     name="standard"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
                           Standard *
                         </span>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={
-                            loadingOptions.standards ||
-                            !form.getValues('stream') ||
-                            !form.getValues('medium')
-                          }
-                        >
-                          <SelectTrigger className="w-full h-10">
-                            <SelectValue
-                              placeholder={
-                                loadingOptions.standards
-                                  ? 'Loading...'
-                                  : !form.getValues('stream') || !form.getValues('medium')
-                                    ? 'Select stream and medium first'
-                                    : 'Select standard'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {standards.map((s) => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                {s.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={
+                              loadingOptions.standards ||
+                              !form.getValues('stream') ||
+                              !form.getValues('medium')
+                            }
+                          >
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue
+                                placeholder={
+                                  loadingOptions.standards
+                                    ? 'Loading...'
+                                    : !form.getValues('stream') || !form.getValues('medium')
+                                      ? 'Select stream and medium first'
+                                      : 'Select standard'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {standards.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -329,39 +433,86 @@ export default function UploadForm({
                     control={form.control}
                     name="subject"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">Subject *</span>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={loadingOptions.subjects || !form.getValues('standard')}
-                        >
-                          <SelectTrigger className="w-full h-10">
-                            <SelectValue
-                              placeholder={
-                                loadingOptions.subjects
-                                  ? 'Loading...'
-                                  : !form.getValues('standard')
-                                    ? 'Select standard first'
-                                    : subjects.length === 0
-                                      ? 'No subjects available'
-                                      : 'Select subject'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {subjects.map((s) => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                {s.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Subject *
+                        </span>
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={loadingOptions.subjects || !form.getValues('standard')}
+                          >
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue
+                                placeholder={
+                                  loadingOptions.subjects
+                                    ? 'Loading...'
+                                    : !form.getValues('standard')
+                                      ? 'Select standard first'
+                                      : subjects.length === 0
+                                        ? 'No subjects available'
+                                        : 'Select subject'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {subjects.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Edition Field */}
+                  <FormField
+                    control={form.control}
+                    name="editionId"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Edition (Optional)
+                        </span>
+                        <div className="space-y-1">
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue placeholder="Select edition (coming soon)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {/* Edition options will be added in the future */}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
                       </FormItem>
                     )}
                   />
                 </div>
+
+                {/* Tags Field */}
+                <FormField
+                  control={form.control}
+                  name="tags"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col space-y-1.5">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Tags (Optional)
+                      </span>
+                      <TagsInput
+                        value={field.value || []}
+                        onChange={field.onChange}
+                        placeholder="Add tags (press Enter or comma to add)"
+                      />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   name="fileFormat"
@@ -401,7 +552,7 @@ export default function UploadForm({
                             htmlFor="two-file"
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
-                            Two File  
+                            Two Files
                           </label>
                         </div>
                       </div>
@@ -415,36 +566,11 @@ export default function UploadForm({
                     name="questionFile"
                     control={form.control}
                     render={({ field }) => (
-                      <FormItem className="flex flex-col space-y-1.5">
-                        <span className="text-sm font-medium text-muted-foreground">
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
                           Question File *
                         </span>
-                        <input
-                          type="file"
-                          accept=".docx"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file && !file.name.toLowerCase().endsWith('.docx')) {
-                              return // Don't set invalid file
-                            }
-                            field.onChange(file)
-                          }}
-                          className="block w-full h-10 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                        />
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {form.watch('fileFormat') === 'two-file' && (
-                    <FormField
-                      name="answerFile"
-                      control={form.control}
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col space-y-1.5">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            Answer File *
-                          </span>
+                        <div className="space-y-1">
                           <input
                             type="file"
                             accept=".docx"
@@ -458,6 +584,35 @@ export default function UploadForm({
                             className="block w-full h-10 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
                           />
                           <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  {form.watch('fileFormat') === 'two-file' && (
+                    <FormField
+                      name="answerFile"
+                      control={form.control}
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col space-y-1">
+                          <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                            Answer File *
+                          </span>
+                          <div className="space-y-1">
+                            <input
+                              type="file"
+                              accept=".docx"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file && !file.name.toLowerCase().endsWith('.docx')) {
+                                  return // Don't set invalid file
+                                }
+                                field.onChange(file)
+                              }}
+                              className="block w-full h-10 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                            />
+                            <FormMessage />
+                          </div>
                         </FormItem>
                       )}
                     />
