@@ -401,7 +401,7 @@ export default function UploadForm({
                             htmlFor="two-file"
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
-                            Separate Files
+                            Two File  
                           </label>
                         </div>
                       </div>

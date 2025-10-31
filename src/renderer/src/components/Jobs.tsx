@@ -209,10 +209,12 @@ export default function Jobs(): React.JSX.Element {
 
   const getStatusBadge = (state: Job['state']): React.JSX.Element => {
     const styles: Record<string, string> = {
-      PENDING: 'bg-yellow-50 text-yellow-700 border-yellow-100 hover:bg-yellow-50',
-      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-50',
-      DONE: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-50',
-      FAILED: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-50'
+      PENDING: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
+      PROCESSING: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+      DONE: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+      FAILED: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+      RUNNING: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
+      UPLOADED: 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
     }
 
     return (
@@ -678,7 +680,7 @@ export default function Jobs(): React.JSX.Element {
                                     size="sm"
                                     onClick={() => handleRerun(job.job_id)}
                                     className="flex items-center gap-2"
-                                    disabled={job.state === 'RUNNING'}
+                                    disabled={job.state !== 'FAILED'}
                                   >
                                     <RotateCw className="h-4 w-4" />
                                   </Button>
