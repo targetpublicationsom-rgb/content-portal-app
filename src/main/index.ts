@@ -171,23 +171,52 @@ async function startPythonServer(): Promise<void> {
 
 // --- 🧹 Stop Content Orchestrator ---
 async function stopPythonServer(): Promise<void> {
-  if (!serverProcess) return
+  if (!serverProcess) {
+    console.log('[Main] No server process to stop')
+    return
+  }
+
   console.log('[Main] Stopping Content Orchestrator...')
 
   try {
     if (process.platform === 'win32') {
-      execSync(`taskkill /PID ${serverProcess.pid} /T /F`)
+      // Kill the process tree forcefully on Windows
+      console.log(`[Main] Killing process tree for PID: ${serverProcess.pid}`)
+      execSync(`taskkill /PID ${serverProcess.pid} /T /F`, { timeout: 10000 })
+
+      // Also try to kill any remaining content-orchestrator.exe processes
+      try {
+        execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 5000 })
+      } catch (e) {
+        // Ignore error if no processes found
+        console.log('[Main] No additional content-orchestrator.exe processes found')
+      }
     } else {
       if (serverProcess.pid) {
+        console.log(`[Main] Sending SIGTERM to PID: ${serverProcess.pid}`)
         process.kill(serverProcess.pid, 'SIGTERM')
+
+        // Wait a moment then force kill if still running
+        setTimeout(() => {
+          try {
+            if (serverProcess && serverProcess.pid) {
+              process.kill(serverProcess.pid, 'SIGKILL')
+            }
+          } catch (e) {
+            // Process already dead
+          }
+        }, 2000)
       }
     }
   } catch (err) {
     console.warn('[Main] Error while stopping Content Orchestrator:', err)
+    // Even if there's an error, continue with cleanup
   }
 
   serverProcess = null
   serverRunning = false
+  serverStarting = false
+  console.log('[Main] Content Orchestrator stopped and cleaned up')
 }
 
 // --- 🪟 Create Window ---
@@ -209,8 +238,9 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     // Check if app should start minimized (can be configured later)
-    const startMinimized = process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
-    
+    const startMinimized =
+      process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
+
     if (startMinimized) {
       console.log('[Main] Starting minimized to tray')
       // Don't show the window, just keep it ready
@@ -225,7 +255,7 @@ function createWindow(): void {
       event.preventDefault()
       mainWindow?.hide()
       console.log('[Main] Window hidden to tray')
-      
+
       // Show tray notification on first hide (Windows only)
       if (process.platform === 'win32' && tray) {
         tray.displayBalloon({
@@ -292,7 +322,7 @@ function createWindow(): void {
 function createTray(): void {
   try {
     let trayIconPath: string
-    
+
     if (is.dev) {
       // Development mode - use icon from resources
       trayIconPath = path.join(process.cwd(), 'resources', 'icon.png')
@@ -304,20 +334,20 @@ function createTray(): void {
         path.join(__dirname, '../../resources/icon.png'),
         icon // fallback to the imported icon
       ]
-      
+
       trayIconPath = possiblePaths.find((p) => fs.existsSync(p)) || icon
     }
-    
+
     console.log('[Main] Using tray icon path:', trayIconPath)
-    
+
     const trayIcon = nativeImage.createFromPath(trayIconPath)
-    
+
     // Ensure the icon is properly resized for system tray
     const resizedIcon = trayIcon.resize({ width: 16, height: 16 })
-    
+
     // Create tray with the icon, with better error handling
     tray = new Tray(resizedIcon.isEmpty() ? trayIcon : resizedIcon)
-    
+
     if (tray.isDestroyed()) {
       console.error('[Main] Failed to create tray')
       return
@@ -373,7 +403,7 @@ function createTray(): void {
         }
       }
     })
-    
+
     tray.on('double-click', () => {
       // Double click to show and focus
       if (mainWindow) {
@@ -382,9 +412,9 @@ function createTray(): void {
         mainWindow.focus()
       }
     })
-    
+
     console.log('[Main] System tray created successfully')
-    
+
     // Optional: Show a notification that tray is ready (only on first run)
     if (process.platform === 'win32') {
       setTimeout(() => {
@@ -431,7 +461,7 @@ app.whenReady().then(async () => {
 
   // Create tray first to ensure it's available
   createTray()
-  
+
   // Then create window
   createWindow()
 
@@ -457,15 +487,32 @@ app.on('before-quit', async (event) => {
   isQuitting = true
   console.log('[Main] Stopping Python server before quit...')
   await stopPythonServer()
-  
+
   // Clean up tray
   if (tray) {
     tray.destroy()
     tray = null
   }
-  
-  console.log('[Main] Python server stopped')
-  app.quit()
+
+  console.log('[Main] Python server stopped - allowing app to quit')
+  // Don't call app.quit() here as it creates a loop - just let the event continue
+  isQuitting = false // Reset the flag to allow the quit to proceed naturally
+})
+
+// --- 🔄 Final cleanup on quit ---
+app.on('will-quit', async () => {
+  console.log('[Main] App is about to quit - final cleanup')
+
+  // Final attempt to kill any remaining content-orchestrator processes
+  if (process.platform === 'win32') {
+    try {
+      execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 3000 })
+      console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
+    } catch (e) {
+      // No processes found or already cleaned up
+      console.log('[Main] Final cleanup: no content-orchestrator processes to clean up')
+    }
+  }
 })
 
 // --- IPC handlers ---
