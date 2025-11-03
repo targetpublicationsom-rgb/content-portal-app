@@ -2,7 +2,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Badge } from './ui/badge'
-import { Clock, CheckCircle } from 'lucide-react'
+import { Button } from './ui/button'
+import { Clock, Upload, RotateCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { uploadFilesToServer } from '../services'
+import toast from 'react-hot-toast'
 import type { JobStatus, Stage } from '../types'
 
 interface JobProgressProps {
@@ -14,7 +17,16 @@ interface JobProgressProps {
 
 export default function JobProgress({ open, onClose, jobId, serverPort }: JobProgressProps) {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [stagesExpanded, setStagesExpanded] = useState(true)
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  // Auto-collapse stages when upload button becomes available
+  useEffect(() => {
+    if (jobStatus?.state === 'DONE' && jobStatus?.gate_passed) {
+      setStagesExpanded(false)
+    }
+  }, [jobStatus?.state, jobStatus?.gate_passed])
 
   useEffect(() => {
     if (!open || !jobId || !serverPort) return
@@ -158,6 +170,22 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
     }
   }, [open, jobId, serverPort])
 
+  const handleUpload = async () => {
+    if (!jobStatus?.job_id) return
+
+    setIsUploading(true)
+    try {
+      const result = await uploadFilesToServer(jobStatus.job_id)
+      toast.success(result.message || 'Files uploaded successfully!')
+      onClose() // Close the modal after successful upload
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+      toast.error(errorMessage)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const getStatusBadge = (
     status: Stage['status'] | 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   ) => {
@@ -196,15 +224,15 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-2xl"
+        className="max-w-2xl max-h-[90vh] min-h-[400px] flex flex-col p-0"
         onInteractOutside={(e) => {
           e.preventDefault()
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="px-6 py-4 border-b shrink-0">
           <DialogTitle>Job Progress</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex-1 overflow-auto px-6 py-4 space-y-4 custom-scrollbar">
           {jobStatus ? (
             <>
               <div className="flex items-center justify-between">
@@ -218,75 +246,107 @@ export default function JobProgress({ open, onClose, jobId, serverPort }: JobPro
                 </div>
               </div>
 
-              <div className="border rounded-lg p-4">
-                <div className="font-medium mb-4">Stages</div>
-                <div className="space-y-0 relative ml-3">
-                  {/* Timeline line */}
-                  <div className="absolute left-0 top-4 bottom-4 border-l-2 border-border" />
+              <div className="border rounded-lg overflow-hidden">
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setStagesExpanded(!stagesExpanded)}
+                >
+                  <div className="font-medium">Processing Stages</div>
+                  {stagesExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
 
-                  {jobStatus.stages.map((stage) => {
-                    return (
-                      <div key={stage.name} className="relative pl-4 pb-1 last:pb-0">
-                        {/* Timeline dot */}
-                        <div
-                          className={`absolute h-3 w-3 -translate-x-1/2 left-px top-[18px] rounded-full border-2 bg-background ${
-                            stage.status === 'running'
-                              ? 'border-blue-500'
-                              : stage.status === 'ok'
-                                ? 'border-green-500'
-                                : stage.status === 'error'
-                                  ? 'border-red-500'
-                                  : 'border-gray-300'
-                          }`}
-                        />
+                {stagesExpanded && (
+                  <div className="px-4 pb-4 border-t animate-in slide-in-from-top-2 duration-200">
+                    <div className="space-y-0 relative ml-3 pt-4">
+                      {/* Timeline line */}
+                      <div className="absolute left-0 top-4 bottom-4 border-l-2 border-border" />
 
-                        {/* Content */}
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2.5">
-                            <div>
-                              <div className="font-medium">{stage.name}</div>
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
-                                <span>{getStatusBadge(stage.status)}</span>
-                                {stage.metrics ? (
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="h-3.5 w-3.5" />
-                                    <span>Duration: {stage.metrics.duration_sec.toFixed(1)}s</span>
+                      {jobStatus.stages.map((stage) => {
+                        return (
+                          <div key={stage.name} className="relative pl-4 pb-1 last:pb-0">
+                            {/* Timeline dot */}
+                            <div
+                              className={`absolute h-3 w-3 -translate-x-1/2 left-px top-[18px] rounded-full border-2 bg-background ${
+                                stage.status === 'running'
+                                  ? 'border-blue-500'
+                                  : stage.status === 'ok'
+                                    ? 'border-green-500'
+                                    : stage.status === 'error'
+                                      ? 'border-red-500'
+                                      : 'border-gray-300'
+                              }`}
+                            />
+
+                            {/* Content */}
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2.5">
+                                <div>
+                                  <div className="font-medium">{stage.name}</div>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                                    <span>{getStatusBadge(stage.status)}</span>
+                                    {stage.metrics ? (
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        <span>
+                                          Duration: {stage.metrics.duration_sec.toFixed(1)}s
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      stage?.started_at && (
+                                        <div className="flex items-center gap-1">
+                                          <Clock className="h-3.5 w-3.5" />
+                                          <span>
+                                            Started At:{' '}
+                                            {new Date(stage?.started_at).toLocaleTimeString()}
+                                          </span>
+                                        </div>
+                                      )
+                                    )}
                                   </div>
-                                ) : (
-                                  stage?.started_at && (
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-3.5 w-3.5" />
-                                      <span>
-                                        Started At:{' '}
-                                        {new Date(stage?.started_at).toLocaleTimeString()}
-                                      </span>
-                                    </div>
-                                  )
-                                )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                          <div className="text-sm text-muted-foreground space-y-1 pl-11">
-                            {stage.ended_at && (
-                              <div className="flex items-center gap-2">
-                                <CheckCircle className="h-3.5 w-3.5" />
-                                <span>
-                                  Completed {new Date(stage.ended_at).toLocaleTimeString()}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
             <div className="text-center py-4 text-muted-foreground">Connecting to job...</div>
           )}
         </div>
+
+        {/* Fixed Upload Button at Bottom - Show only if job is done successfully and gate passed */}
+        {jobStatus?.state === 'DONE' && jobStatus?.gate_passed && (
+          <div className="px-6 py-4 border-t bg-background shrink-0 rounded-b-lg">
+            <div className="flex items-center justify-center">
+              <Button
+                onClick={handleUpload}
+                disabled={isUploading}
+                className="px-6 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors shadow-sm"
+              >
+                {isUploading ? (
+                  <>
+                    <RotateCw className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading Files...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Files to Server
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

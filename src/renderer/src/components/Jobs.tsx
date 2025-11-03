@@ -371,7 +371,7 @@ export default function Jobs(): React.JSX.Element {
               {/* Search Bar with State & Format */}
               <div className="flex gap-2">
                 <Input
-                  placeholder="Search jobs by ID, taxonomy..."
+                  placeholder="Search jobs"
                   value={filters.searchQuery}
                   onChange={(e) => {
                     setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
