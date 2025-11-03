@@ -12,6 +12,9 @@ interface API {
   onServerStatusChange: (
     callback: (event: any, data: { status: string; message: string }) => void
   ) => () => void
+  onQuitBlocked: (
+    callback: (event: any, data: { message: string }) => void
+  ) => () => void
   readHtmlFile: (filePath: string) => Promise<string>
   readLogFile: (filePath: string) => Promise<string>
 }

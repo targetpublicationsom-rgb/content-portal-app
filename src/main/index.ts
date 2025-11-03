@@ -169,6 +169,72 @@ async function startPythonServer(): Promise<void> {
   })
 }
 
+// --- 🔍 Check for Running Jobs ---
+async function checkForRunningJobs(): Promise<boolean> {
+  try {
+    console.log('[Main] Checking for running jobs before quit...')
+
+    // Get the actual server port from configuration
+    let serverPort = DEFAULT_PORT
+    try {
+      const appDataDir = app.getPath('appData')
+      const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+        serverPort = data.port || DEFAULT_PORT
+        console.log('[Main] Using server port from config:', serverPort)
+      } else {
+        console.log('[Main] Server config file not found, using default port:', DEFAULT_PORT)
+      }
+    } catch (error) {
+      console.warn('[Main] Error reading server config, using default port:', error)
+    }
+
+    // Only use the configured server port
+    try {
+      const response = await fetch(`http://127.0.0.1:${serverPort}/dashboard/jobs?limit=30`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[Main] Retrieved jobs for quit check:', data)
+
+        // Check if there are any running jobs (API returns jobs in 'items' array)
+        if (data.items && Array.isArray(data.items)) {
+          const runningJobs = data.items.filter(
+            (job) =>
+              job.state === 'RUNNING' || job.state === 'PENDING' || job.state === 'PROCESSING'
+          )
+
+          if (runningJobs.length > 0) {
+            console.log(`[Main] Found ${runningJobs.length} running jobs, blocking quit`)
+            console.log('[Main] Running jobs:', runningJobs.map(job => ({ id: job.job_id, state: job.state })))
+            return true // Has running jobs
+          }
+        }
+
+        console.log('[Main] No running jobs found, quit allowed')
+        return false // No running jobs
+      }
+    } catch (error) {
+      console.log(
+        `[Main] Failed to check jobs on port ${serverPort}:`,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+    }
+
+    // If we can't reach the server, assume no running jobs (server might be down)
+    console.log('[Main] Could not reach server, assuming no running jobs')
+    return false
+  } catch (error) {
+    console.error('[Main] Error checking for running jobs:', error)
+    return false // Allow quit if we can't check
+  }
+}
+
 // --- 🧹 Stop Content Orchestrator ---
 async function stopPythonServer(): Promise<void> {
   if (!serverProcess) {
@@ -335,8 +401,6 @@ function createTray(): void {
         trayIcon = nativeImage.createFromPath(icon)
       }
     } else {
-      
-
       // Prefer ICO format on Windows for better system tray compatibility
       const iconFormats =
         process.platform === 'win32' ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico']
@@ -499,8 +563,45 @@ function createTray(): void {
       {
         label: 'Quit Content Portal',
         click: async () => {
+          console.log('[Main] Quit requested from tray...')
+
+          // Check if there are running jobs
+          const hasRunningJobs = await checkForRunningJobs()
+
+          if (hasRunningJobs) {
+            console.log('[Main] Blocking quit - running jobs detected')
+
+            // Show toast notification
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('show-quit-blocked-toast', {
+                message:
+                  "Can't quit - jobs are still running. Please wait for jobs to finish or check the Jobs tab."
+              })
+
+              // Show the main window if it's hidden so user can see the toast
+              if (!mainWindow.isVisible()) {
+                mainWindow.show()
+              }
+              if (mainWindow.isMinimized()) {
+                mainWindow.restore()
+              }
+              mainWindow.focus()
+            }
+
+            // Also show system tray balloon if possible
+            if (tray && process.platform === 'win32') {
+              tray.displayBalloon({
+                title: 'Content Portal',
+                content: "Can't quit - jobs are still running. Check the Jobs tab for details."
+              })
+            }
+
+            return // Don't quit
+          }
+
+          // No running jobs, proceed with quit
           isQuitting = true
-          console.log('[Main] Quitting from tray...')
+          console.log('[Main] No running jobs, proceeding with quit...')
           await stopPythonServer()
           app.quit()
         }

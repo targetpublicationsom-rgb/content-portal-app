@@ -18,6 +18,12 @@ const api = {
     return () => ipcRenderer.removeListener('server-status-change', callback)
   },
 
+  // Listen to quit blocked notifications
+  onQuitBlocked: (callback: (event: any, data: { message: string }) => void) => {
+    ipcRenderer.on('show-quit-blocked-toast', callback)
+    return () => ipcRenderer.removeListener('show-quit-blocked-toast', callback)
+  },
+
   // Read HTML file content
   readHtmlFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('read-html-file', filePath),

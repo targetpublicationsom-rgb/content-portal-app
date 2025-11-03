@@ -2,7 +2,7 @@ import { RouterProvider } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import StatusBar from './components/StatusBar'
 import ServerStartup from './components/ServerStartup'
-import { Toaster } from 'react-hot-toast'
+import { Toaster, toast } from 'react-hot-toast'
 import { router } from './router'
 
 function App(): React.JSX.Element {
@@ -23,7 +23,22 @@ function App(): React.JSX.Element {
       }
     }
 
+    // IPC listener for quit blocked toast
+    const handleQuitBlocked = (_event: any, data: { message: string }) => {
+      toast.error(data.message, {
+        duration: 5000
+      })
+    }
+
+    // Set up IPC listeners
+    const removeQuitBlockedListener = window.api?.onQuitBlocked?.(handleQuitBlocked)
+
     checkServerStatus()
+
+    // Cleanup listener on component unmount
+    return () => {
+      removeQuitBlockedListener?.()
+    }
   }, [])
 
   const handleServerReady = (): void => {
