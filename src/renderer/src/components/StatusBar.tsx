@@ -19,8 +19,8 @@ export default function StatusBar(): React.JSX.Element {
             setHealth(data)
           }
         }
-      } catch (error) {
-        console.error('Failed to check status:', error)
+      } catch {
+        // Handle status check error silently
       }
     }
 

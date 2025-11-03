@@ -16,8 +16,8 @@ function App(): React.JSX.Element {
         if (isRunning) {
           setServerReady(true)
         }
-      } catch (error) {
-        console.error('Error checking server status:', error)
+      } catch {
+        // Silently handle server status check errors
       } finally {
         setInitialCheckComplete(true)
       }

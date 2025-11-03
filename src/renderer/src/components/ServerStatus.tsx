@@ -20,7 +20,6 @@ export function ServerStatus(): React.JSX.Element {
 
   const checkHealth = useCallback(async (port: number): Promise<void> => {
     try {
-      console.log(`[Renderer] Checking health at http://127.0.0.1:${port}/health`)
       const response = await fetch(`http://127.0.0.1:${port}/health`, {
         method: 'GET',
         headers: {
@@ -28,17 +27,13 @@ export function ServerStatus(): React.JSX.Element {
         }
       })
 
-      console.log(`[Renderer] Health check response status: ${response.status}`)
-
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
       const data: HealthResponse = await response.json()
-      console.log('[Renderer] Health check data:', data)
       setHealthStatus(data.status === 'ok' ? '✅ Healthy' : '⚠️ Unhealthy')
     } catch (err) {
-      console.error('[Renderer] Health check failed:', err)
       setHealthStatus(`❌ Failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }, [])
@@ -48,17 +43,13 @@ export function ServerStatus(): React.JSX.Element {
       setLoading(true)
       setError(null)
 
-      console.log('[Renderer] Checking server status...')
-
       // Check if server is running via IPC
       const running = await window.api.isServerRunning()
-      console.log('[Renderer] Server running:', running)
       setIsServerRunning(running)
 
       if (running) {
         // Get server info from main process
         const info = await window.api.getServerInfo()
-        console.log('[Renderer] Server info:', info)
 
         if (info) {
           setServerInfo(info)
@@ -73,7 +64,6 @@ export function ServerStatus(): React.JSX.Element {
         setError('Python server is not running')
       }
     } catch (err) {
-      console.error('[Renderer] Failed to check server status:', err)
       setError(`Failed to connect to server: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)

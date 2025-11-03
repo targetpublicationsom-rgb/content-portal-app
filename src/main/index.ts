@@ -49,17 +49,12 @@ async function startPythonServer(): Promise<void> {
     const executablePath = is.dev
       ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
       : path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'content-orchestrator.exe')
-    console.log(`[Main] Starting Content Orchestrator: ${executablePath}`)
-    console.log(`[Main] Is development: ${is.dev}`)
-    console.log(`[Main] Resources path: ${process.resourcesPath}`)
-    console.log(`[Main] Current working directory: ${process.cwd()}`)
+    // Starting Content Orchestrator
 
     try {
       if (process.platform === 'win32') {
-        console.log('[Main] Cleaning up existing Content Orchestrator processes...')
         execSync('taskkill /IM content-orchestrator.exe /F', { stdio: 'ignore' })
       } else {
-        console.log('[Main] Cleaning up existing Content Orchestrator processes...')
         execSync('pkill -f "content-orchestrator"', { stdio: 'ignore' })
       }
     } catch {
@@ -79,8 +74,6 @@ async function startPythonServer(): Promise<void> {
       return
     }
 
-    console.log(`[Main] Using Content Orchestrator executable: ${executablePath}`)
-
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('server-status-change', {
         status: 'starting',
@@ -95,7 +88,6 @@ async function startPythonServer(): Promise<void> {
 
     serverProcess.stdout.on('data', (data) => {
       const message = data.toString().trim()
-      console.log(`[Orchestrator STDOUT]: ${message}`)
       if (
         message.includes('Running on') ||
         message.includes('Server started') ||
@@ -172,8 +164,6 @@ async function startPythonServer(): Promise<void> {
 // --- 🔍 Check for Running Jobs ---
 async function checkForRunningJobs(): Promise<boolean> {
   try {
-    console.log('[Main] Checking for running jobs before quit...')
-
     // Get the actual server port from configuration
     let serverPort = DEFAULT_PORT
     try {
@@ -182,12 +172,9 @@ async function checkForRunningJobs(): Promise<boolean> {
       if (fs.existsSync(filePath)) {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
         serverPort = data.port || DEFAULT_PORT
-        console.log('[Main] Using server port from config:', serverPort)
-      } else {
-        console.log('[Main] Server config file not found, using default port:', DEFAULT_PORT)
       }
-    } catch (error) {
-      console.warn('[Main] Error reading server config, using default port:', error)
+    } catch {
+      // Use default port on error
     }
 
     // Only use the configured server port
@@ -200,7 +187,6 @@ async function checkForRunningJobs(): Promise<boolean> {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('[Main] Retrieved jobs for quit check:', data)
 
         // Check if there are any running jobs (API returns jobs in 'items' array)
         if (data.items && Array.isArray(data.items)) {
@@ -210,27 +196,19 @@ async function checkForRunningJobs(): Promise<boolean> {
           )
 
           if (runningJobs.length > 0) {
-            console.log(`[Main] Found ${runningJobs.length} running jobs, blocking quit`)
-            console.log('[Main] Running jobs:', runningJobs.map(job => ({ id: job.job_id, state: job.state })))
             return true // Has running jobs
           }
         }
 
-        console.log('[Main] No running jobs found, quit allowed')
         return false // No running jobs
       }
-    } catch (error) {
-      console.log(
-        `[Main] Failed to check jobs on port ${serverPort}:`,
-        error instanceof Error ? error.message : 'Unknown error'
-      )
+    } catch {
+      // Failed to check jobs on this port
     }
 
     // If we can't reach the server, assume no running jobs (server might be down)
-    console.log('[Main] Could not reach server, assuming no running jobs')
     return false
-  } catch (error) {
-    console.error('[Main] Error checking for running jobs:', error)
+  } catch {
     return false // Allow quit if we can't check
   }
 }
@@ -238,28 +216,22 @@ async function checkForRunningJobs(): Promise<boolean> {
 // --- 🧹 Stop Content Orchestrator ---
 async function stopPythonServer(): Promise<void> {
   if (!serverProcess) {
-    console.log('[Main] No server process to stop')
     return
   }
-
-  console.log('[Main] Stopping Content Orchestrator...')
 
   try {
     if (process.platform === 'win32') {
       // Kill the process tree forcefully on Windows
-      console.log(`[Main] Killing process tree for PID: ${serverProcess.pid}`)
       execSync(`taskkill /PID ${serverProcess.pid} /T /F`, { timeout: 10000 })
 
       // Also try to kill any remaining content-orchestrator.exe processes
       try {
         execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 5000 })
-      } catch (e) {
+      } catch {
         // Ignore error if no processes found
-        console.log('[Main] No additional content-orchestrator.exe processes found')
       }
     } else {
       if (serverProcess.pid) {
-        console.log(`[Main] Sending SIGTERM to PID: ${serverProcess.pid}`)
         process.kill(serverProcess.pid, 'SIGTERM')
 
         // Wait a moment then force kill if still running
@@ -268,21 +240,19 @@ async function stopPythonServer(): Promise<void> {
             if (serverProcess && serverProcess.pid) {
               process.kill(serverProcess.pid, 'SIGKILL')
             }
-          } catch (e) {
+          } catch {
             // Process already dead
           }
         }, 2000)
       }
     }
-  } catch (err) {
-    console.warn('[Main] Error while stopping Content Orchestrator:', err)
+  } catch {
     // Even if there's an error, continue with cleanup
   }
 
   serverProcess = null
   serverRunning = false
   serverStarting = false
-  console.log('[Main] Content Orchestrator stopped and cleaned up')
 }
 
 // --- 🪟 Create Window ---
@@ -308,7 +278,6 @@ function createWindow(): void {
       process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
 
     if (startMinimized) {
-      console.log('[Main] Starting minimized to tray')
       // Don't show the window, just keep it ready
     } else {
       mainWindow?.maximize()
@@ -320,7 +289,6 @@ function createWindow(): void {
     if (!isQuitting) {
       event.preventDefault()
       mainWindow?.hide()
-      console.log('[Main] Window hidden to tray')
 
       // Show tray notification on first hide (Windows only)
       if (process.platform === 'win32' && tray) {

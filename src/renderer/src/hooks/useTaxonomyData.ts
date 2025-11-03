@@ -46,8 +46,8 @@ export const useTaxonomyData = (): {
         setLoadingOptions((prev) => ({ ...prev, streams: true }))
         const streamsData = await fetchStreams()
         setStreams(streamsData)
-      } catch (error) {
-        console.error('Failed to fetch streams:', error)
+      } catch {
+        // Handle fetch error silently
       } finally {
         setLoadingOptions((prev) => ({ ...prev, streams: false }))
       }
@@ -57,8 +57,8 @@ export const useTaxonomyData = (): {
         setLoadingOptions((prev) => ({ ...prev, boards: true }))
         const boardsData = await fetchBoards()
         setBoards(boardsData)
-      } catch (error) {
-        console.error('Failed to fetch boards:', error)
+      } catch {
+        // Handle fetch error silently
       } finally {
         setLoadingOptions((prev) => ({ ...prev, boards: false }))
       }
@@ -68,8 +68,8 @@ export const useTaxonomyData = (): {
         setLoadingOptions((prev) => ({ ...prev, mediums: true }))
         const mediumsData = await fetchMediums()
         setMediums(mediumsData)
-      } catch (error) {
-        console.error('Failed to fetch mediums:', error)
+      } catch {
+        // Handle fetch error silently
       } finally {
         setLoadingOptions((prev) => ({ ...prev, mediums: false }))
       }
@@ -99,8 +99,8 @@ export const useTaxonomyData = (): {
         setLoadingOptions((prev) => ({ ...prev, standards: true }))
         const standardsData = await fetchStandards(streamId, boardId, mediumId)
         setStandards(standardsData)
-      } catch (error) {
-        console.error('Failed to fetch standards:', error)
+      } catch {
+        // Handle fetch error silently
         setStandards([])
       } finally {
         setLoadingOptions((prev) => ({ ...prev, standards: false }))
@@ -122,8 +122,8 @@ export const useTaxonomyData = (): {
       setLoadingOptions((prev) => ({ ...prev, subjects: true }))
       const subjectsData = await fetchSubjects(standardId)
       setSubjects(subjectsData)
-    } catch (error) {
-      console.error('Failed to fetch subjects:', error)
+    } catch {
+      // Handle fetch error silently
       setSubjects([])
     } finally {
       setLoadingOptions((prev) => ({ ...prev, subjects: false }))

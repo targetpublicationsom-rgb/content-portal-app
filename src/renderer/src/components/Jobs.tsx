@@ -163,8 +163,8 @@ export default function Jobs(): React.JSX.Element {
           }
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error)
+    } catch {
+      // Handle fetch error silently
     } finally {
       setLoading(false)
     }
@@ -200,8 +200,8 @@ export default function Jobs(): React.JSX.Element {
       setReportContent(htmlContent)
       setReportTitle(title)
       setShowReport(true)
-    } catch (error) {
-      console.error('Error reading HTML file:', error)
+    } catch {
+      // Handle file read error silently
     }
   }
 
@@ -224,8 +224,8 @@ export default function Jobs(): React.JSX.Element {
         fetchJobsData()
         toast.success('Job rerun started successfully')
       }
-    } catch (error) {
-      console.error('Failed to rerun job:', error)
+    } catch {
+      // Handle rerun error silently
     }
   }
 

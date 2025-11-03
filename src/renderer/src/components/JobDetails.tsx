@@ -32,8 +32,8 @@ export default function JobDetails(): React.JSX.Element {
             setJob(data)
           }
         }
-      } catch (error) {
-        console.error('Failed to fetch job details:', error)
+      } catch {
+        // Handle fetch error silently
       } finally {
         setLoading(false)
       }

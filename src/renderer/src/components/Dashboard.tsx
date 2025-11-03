@@ -26,8 +26,8 @@ export default function Dashboard(): React.JSX.Element {
       setLoading(true)
       const data = await fetchDashboardStats(port)
       setStats(data)
-    } catch (error) {
-      console.error('Failed to fetch dashboard stats:', error)
+    } catch {
+      // Handle fetch error silently
     } finally {
       setLoading(false)
     }

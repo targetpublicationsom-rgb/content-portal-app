@@ -34,8 +34,7 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
         } else {
           setServerStatus({ status: 'error', message: 'Server not starting' })
         }
-      } catch (error) {
-        console.error('Error checking server status:', error)
+      } catch {
         setServerStatus({ status: 'error', message: 'Unable to check server status' })
       }
     }

@@ -60,7 +60,6 @@ export const createJob = async (formData: FormData): Promise<{ job_id: string }>
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
-        console.log(errorData)
         const errorMessage = errorData?.detail || 'Failed to create job'
         throw new Error(errorMessage)
       }
@@ -68,7 +67,6 @@ export const createJob = async (formData: FormData): Promise<{ job_id: string }>
     }
     throw new Error('Server not available')
   } catch (error) {
-    console.error('Failed to create job:', error)
     throw error
   }
 }
@@ -86,7 +84,6 @@ export const uploadFilesToServer = async (jobId: string): Promise<{ message: str
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
-        console.log(errorData)
         const errorMessage = errorData?.detail || 'Failed to upload to job'
         throw new Error(errorMessage)
       }
@@ -94,7 +91,6 @@ export const uploadFilesToServer = async (jobId: string): Promise<{ message: str
     }
     throw new Error('Server not available')
   } catch (error) {
-    console.error('Failed to upload to job:', error)
     throw error
   }
 }
