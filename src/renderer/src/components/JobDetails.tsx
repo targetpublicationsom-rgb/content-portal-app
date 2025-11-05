@@ -6,7 +6,7 @@ import { ArrowLeft, FileText } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import {
   getJobStateBadgeStyles,
-  getGateStatusBadgeStyles,
+  getGateStatusDisplay,
   getStageStatusBadgeStyles
 } from '../lib/badge-utils'
 import type { JobDetails as JobDetailsType } from '../types'
@@ -92,23 +92,28 @@ export default function JobDetails(): React.JSX.Element {
               <div className="mt-1">
                 <Badge
                   variant="outline"
-                  className={`text-sm px-3 py-1.5 font-semibold ${getJobStateBadgeStyles(job.state)}`}
+                  className={`text-sm px-3 py-1.5 font-semibold ${getJobStateBadgeStyles(job.state)} capitalize`}
                 >
-                  {job.state.toLocaleUpperCase()}
+                  {job.state.toLowerCase()}
                 </Badge>
               </div>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Gate Status
+                Validation Status
               </label>
               <div className="mt-1">
-                <Badge
-                  variant="outline"
-                  className={`text-sm px-3 py-1.5 font-semibold ${getGateStatusBadgeStyles(job.gate_passed)}`}
-                >
-                  Gate {job.gate_passed ? 'passed' : 'failed'}
-                </Badge>
+                {(() => {
+                  const gateDisplay = getGateStatusDisplay(job.state, job.gate_passed)
+                  return (
+                    <Badge
+                      variant="outline"
+                      className={`text-sm px-3 py-1.5 font-semibold ${gateDisplay.styles} capitalize`}
+                    >
+                      {gateDisplay.text}
+                    </Badge>
+                  )
+                })()}
               </div>
             </div>
             <div className="space-y-1">

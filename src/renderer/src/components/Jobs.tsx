@@ -24,7 +24,7 @@ import type { Job, JobsResponse, TaxonomyFilters } from '../types'
 import { useTaxonomyData } from '../hooks'
 import { DEFAULT_PAGE_SIZE } from '../constants'
 import { uploadFilesToServer } from '../services'
-import { getJobStateBadgeStyles, getGateStatusBadgeStyles } from '../lib/badge-utils'
+import { getJobStateBadgeStyles, getGateStatusDisplay } from '../lib/badge-utils'
 
 export default function Jobs(): React.JSX.Element {
   const navigate = useNavigate()
@@ -407,6 +407,7 @@ export default function Jobs(): React.JSX.Element {
                       <SelectItem value="RUNNING">Running</SelectItem>
                       <SelectItem value="DONE">Done</SelectItem>
                       <SelectItem value="FAILED">Failed</SelectItem>
+                      <SelectItem value="UPLOADED">Uploaded</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -602,7 +603,7 @@ export default function Jobs(): React.JSX.Element {
                     <TableHead>Job ID</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Format</TableHead>
-                    <TableHead>Gate Status</TableHead>
+                    <TableHead>Validation Status</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -650,14 +651,17 @@ export default function Jobs(): React.JSX.Element {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {
-                            <Badge
-                              variant="outline"
-                              className={`capitalize font-medium ${getGateStatusBadgeStyles(job.gate_passed)}`}
-                            >
-                              Gate {job.gate_passed ? 'passed' : 'failed'}
-                            </Badge>
-                          }
+                          {(() => {
+                            const gateDisplay = getGateStatusDisplay(job.state, job.gate_passed)
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={`capitalize font-medium ${gateDisplay.styles}`}
+                              >
+                                {gateDisplay.text}
+                              </Badge>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
