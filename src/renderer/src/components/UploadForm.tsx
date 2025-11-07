@@ -21,6 +21,7 @@ const formSchema = z
     standard: z.string().min(1, 'Standard is required'),
     subject: z.string().min(1, 'Subject is required'),
     fileFormat: z.enum(['single', 'two-file']).describe('Please select a file format'),
+    operation: z.enum(['insert', 'update']),
     tags: z.array(z.string()).optional(),
     editionId: z.string().optional(),
     questionFile: z.custom<File>(
@@ -46,6 +47,14 @@ const formSchema = z
         code: z.ZodIssueCode.custom,
         message: 'Answer file is required when using separate files',
         path: ['answerFile']
+      })
+    }
+    
+    if (data.fileFormat === 'two-file' && data.operation === 'update') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Update mode is only supported with single file format',
+        path: ['operation']
       })
     }
   })
@@ -152,6 +161,7 @@ export default function UploadForm({
       standard: '',
       subject: '',
       fileFormat: 'single',
+      operation: 'insert',
       questionFile: undefined,
       answerFile: undefined,
       tags: [],
@@ -221,6 +231,7 @@ export default function UploadForm({
       // Create FormData object
       const formData = new FormData()
       formData.append('format', data.fileFormat)
+      formData.append('operation', data.operation)
       formData.append('file_question', data.questionFile)
       if (data.fileFormat === 'two-file' && data.answerFile) {
         formData.append('file_answer', data.answerFile)
@@ -576,6 +587,60 @@ export default function UploadForm({
                     </FormItem>
                   )}
                 />
+
+                {/* Operation Mode - Only shown for single file format */}
+                {form.watch('fileFormat') === 'single' && (
+                  <FormField
+                    name="operation"
+                    control={form.control}
+                    render={({ field }) => (
+                      <FormItem className="space-y-3">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Operation Mode *
+                        </span>
+                        <div className="flex gap-4">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id="insert"
+                              value="insert"
+                              className="h-4 w-4"
+                              checked={field.value === 'insert'}
+                              onChange={() => field.onChange('insert')}
+                            />
+                            <label
+                              htmlFor="insert"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Insert (New Questions)
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id="update"
+                              value="update"
+                              className="h-4 w-4"
+                              checked={field.value === 'update'}
+                              onChange={() => field.onChange('update')}
+                            />
+                            <label
+                              htmlFor="update"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Update (Existing Questions)
+                            </label>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Update mode processes questions with question ID markers for existing
+                          database entries.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <div className="flex flex-col gap-x-4 gap-y-6">
                   <FormField
