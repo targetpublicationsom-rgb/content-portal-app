@@ -21,7 +21,8 @@ export const useTaxonomyData = (): {
   standards: TaxonomyOption[]
   subjects: TaxonomyOption[]
   loadingOptions: LoadingOptions
-  loadStandards: (streamId: string, boardId: string, mediumId: string) => Promise<void>
+  // boardId is optional now — standards can be fetched using stream + medium alone
+  loadStandards: (streamId: string, boardId: string | undefined, mediumId: string) => Promise<void>
   loadSubjects: (standardId: string) => Promise<void>
 } => {
   const [streams, setStreams] = useState<TaxonomyOption[]>([])
@@ -82,15 +83,10 @@ export const useTaxonomyData = (): {
    * Fetch standards based on selected stream, board, and medium
    */
   const loadStandards = useCallback(
-    async (streamId: string, boardId: string, mediumId: string): Promise<void> => {
-      if (
-        !streamId ||
-        streamId === 'all' ||
-        !boardId ||
-        boardId === 'all' ||
-        !mediumId ||
-        mediumId === 'all'
-      ) {
+    async (streamId: string, boardId: string | undefined, mediumId: string): Promise<void> => {
+      // Require stream and medium. Board is optional — allow fetching standards
+      // without a board selection (e.g. when board is not selected in the UI).
+      if (!streamId || streamId === 'all' || !mediumId || mediumId === 'all') {
         setStandards([])
         return
       }

@@ -35,20 +35,25 @@ export const fetchMediums = async (): Promise<TaxonomyOption[]> => {
  */
 export const fetchStandards = async (
   streamId: string,
-  boardId: string,
+  boardId: string | undefined,
   mediumId: string
 ): Promise<TaxonomyOption[]> => {
-  if (!streamId || !boardId || !mediumId) {
+  // Require stream and medium. Board is optional — when omitted, fetch standards
+  // across all boards for the given stream+medium.
+  if (!streamId || !mediumId) {
     return []
   }
 
-  const { data } = await api.get<TaxonomyResponse>('/standards', {
-    params: {
-      stream_id: streamId,
-      medium_id: mediumId,
-      board_id: boardId
-    }
-  })
+  const params: Record<string, string> = {
+    stream_id: streamId,
+    medium_id: mediumId
+  }
+
+  if (boardId && boardId !== 'all') {
+    params.board_id = boardId
+  }
+
+  const { data } = await api.get<TaxonomyResponse>('/standards', { params })
   return data.data || []
 }
 

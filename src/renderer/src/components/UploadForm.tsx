@@ -16,7 +16,7 @@ import { createJob } from '../services'
 const formSchema = z
   .object({
     stream: z.string().min(1, 'Stream is required'),
-    board: z.string().min(1, 'Board is required'),
+  board: z.string().optional(),
     medium: z.string().min(1, 'Medium is required'),
     standard: z.string().min(1, 'Standard is required'),
     subject: z.string().min(1, 'Subject is required'),
@@ -210,8 +210,9 @@ export default function UploadForm({
   const boardValue = form.watch('board')
 
   useEffect(() => {
-    if (streamValue && mediumValue && boardValue) {
-      loadStandards(streamValue, boardValue, mediumValue)
+    if (streamValue && mediumValue) {
+      // Pass undefined when board is not selected so hook/service treat it as optional
+      loadStandards(streamValue, boardValue || undefined, mediumValue)
     }
   }, [streamValue, mediumValue, boardValue, loadStandards])
 
@@ -264,7 +265,7 @@ export default function UploadForm({
         formData.append('edition', selectedEdition?.name || '')
       }
 
-      // Submit the job using the service
+      // Submit the job using the serviceorm
       const response = await createJob(formData)
 
       toast.success('Job created successfully!')
@@ -348,7 +349,7 @@ export default function UploadForm({
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1">
                         <span className="text-sm font-medium text-muted-foreground mb-1.5">
-                          Board *
+                          Board (Optional)
                         </span>
                         <div className="space-y-1">
                           <Select
@@ -358,7 +359,9 @@ export default function UploadForm({
                           >
                             <SelectTrigger className="w-full h-10">
                               <SelectValue
-                                placeholder={loadingOptions.boards ? 'Loading...' : 'Select board'}
+                                placeholder={
+                                  loadingOptions.boards ? 'Loading...' : 'Select board (optional)'
+                                }
                               />
                             </SelectTrigger>
                             <SelectContent>
