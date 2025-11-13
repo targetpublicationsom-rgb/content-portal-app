@@ -260,7 +260,8 @@ export default function UploadForm({
 
       if (data.editionId) {
         formData.append('edition_id', data.editionId)
-        const selectedEdition = editions.find((e) => e.id === data.editionId)
+        const selectedEdition = editions.find((e) => e.id == data.editionId)
+        console.log('selectedEdition', selectedEdition)
         formData.append('edition', selectedEdition?.name || '')
       }
 
@@ -511,7 +512,7 @@ export default function UploadForm({
                             </SelectTrigger>
                             <SelectContent>
                               {editions.map((edition) => (
-                                <SelectItem key={edition.id} value={edition.id}>
+                                <SelectItem key={edition.id} value={String(edition.id)}>
                                   {edition.name}
                                 </SelectItem>
                               ))}
