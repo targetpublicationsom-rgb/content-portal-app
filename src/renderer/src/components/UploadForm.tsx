@@ -16,7 +16,7 @@ import { createJob } from '../services'
 const formSchema = z
   .object({
     stream: z.string().min(1, 'Stream is required'),
-  board: z.string().optional(),
+    board: z.string().optional(),
     medium: z.string().min(1, 'Medium is required'),
     standard: z.string().min(1, 'Standard is required'),
     subject: z.string().min(1, 'Subject is required'),
@@ -49,7 +49,7 @@ const formSchema = z
         path: ['answerFile']
       })
     }
-    
+
     if (data.fileFormat === 'two-file' && data.operation === 'update') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -142,16 +142,6 @@ export default function UploadForm({
   onClose,
   onSuccess
 }: UploadFormProps): React.JSX.Element {
-  // Edition options mapping
-  const editions = [
-    { id: '1', name: 'First Edition' },
-    { id: '2', name: 'Second Edition' },
-    { id: '3', name: 'Third Edition' },
-    { id: '4', name: 'Revised Edition' },
-    { id: '5', name: 'Updated Edition' },
-    { id: '6', name: 'Latest Edition' }
-  ]
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -176,9 +166,11 @@ export default function UploadForm({
     mediums,
     standards,
     subjects,
+    editions,
     loadingOptions,
     loadStandards,
-    loadSubjects
+    loadSubjects,
+    loadEditions
   } = useTaxonomyData()
 
   const [loading, setLoading] = useState(false)
@@ -208,6 +200,7 @@ export default function UploadForm({
   const streamValue = form.watch('stream')
   const mediumValue = form.watch('medium')
   const boardValue = form.watch('board')
+  const subjectValue = form.watch('subject')
 
   useEffect(() => {
     if (streamValue && mediumValue) {
@@ -224,6 +217,12 @@ export default function UploadForm({
       loadSubjects(standardValue)
     }
   }, [standardValue, loadSubjects])
+
+  useEffect(() => {
+    if (subjectValue) {
+      loadEditions(subjectValue)
+    }
+  }, [subjectValue, loadEditions])
 
   const onSubmit = async (data: FormValues): Promise<void> => {
     try {

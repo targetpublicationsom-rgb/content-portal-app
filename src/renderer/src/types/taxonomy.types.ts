@@ -20,4 +20,5 @@ export interface LoadingOptions {
   mediums: boolean
   standards: boolean
   subjects: boolean
+  editions: boolean
 }

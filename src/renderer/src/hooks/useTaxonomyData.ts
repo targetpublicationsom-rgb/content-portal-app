@@ -5,7 +5,8 @@ import {
   fetchBoards,
   fetchMediums,
   fetchStandards,
-  fetchSubjects
+  fetchSubjects,
+  fetchEditions
 } from '../services/taxonomy.service'
 
 /**
@@ -20,23 +21,28 @@ export const useTaxonomyData = (): {
   mediums: TaxonomyOption[]
   standards: TaxonomyOption[]
   subjects: TaxonomyOption[]
+  editions: TaxonomyOption[]
   loadingOptions: LoadingOptions
   // boardId is optional now — standards can be fetched using stream + medium alone
   loadStandards: (streamId: string, boardId: string | undefined, mediumId: string) => Promise<void>
   loadSubjects: (standardId: string) => Promise<void>
+  loadEditions: (subjectId: string) => Promise<void>
 } => {
   const [streams, setStreams] = useState<TaxonomyOption[]>([])
   const [boards, setBoards] = useState<TaxonomyOption[]>([])
   const [mediums, setMediums] = useState<TaxonomyOption[]>([])
   const [standards, setStandards] = useState<TaxonomyOption[]>([])
   const [subjects, setSubjects] = useState<TaxonomyOption[]>([])
+  const [editions, setEditions] = useState<TaxonomyOption[]>([])
+
 
   const [loadingOptions, setLoadingOptions] = useState<LoadingOptions>({
     streams: false,
     boards: false,
     mediums: false,
     standards: false,
-    subjects: false
+    subjects: false,
+    editions: false
   })
 
   // Fetch initial taxonomy data (streams, boards, mediums) on mount
@@ -126,14 +132,37 @@ export const useTaxonomyData = (): {
     }
   }, [])
 
+  /**
+   * Fetch Editions based on selected standard
+   */
+  const loadEditions = useCallback(async (subjectId: string): Promise<void> => {
+    if (!subjectId || subjectId === 'all') {
+      setSubjects([])
+      return
+    }
+
+    try {
+      setLoadingOptions((prev) => ({ ...prev, editions: true }))
+      const editionsData = await fetchEditions(subjectId)
+      setEditions(editionsData)
+    } catch {
+      // Handle fetch error silently
+      setEditions([])
+    } finally {
+      setLoadingOptions((prev) => ({ ...prev, editions: false }))
+    }
+  }, [])
+
   return {
     streams,
     boards,
     mediums,
     standards,
     subjects,
+    editions,
     loadingOptions,
     loadStandards,
-    loadSubjects
+    loadSubjects,
+    loadEditions
   }
 }
