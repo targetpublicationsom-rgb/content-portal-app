@@ -321,16 +321,16 @@ export default function Jobs(): React.JSX.Element {
                 >
                   Clear Filters
                 </Button>
-                <Select
-                  value={sortOrder}
-                  onValueChange={(value: 'asc' | 'desc') => {
-                    setSortOrder(value)
-                    fetchJobsData(null, true)
-                  }}
-                >
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <Select
+                    value={sortOrder}
+                    onValueChange={(value: 'asc' | 'desc') => {
+                      setSortOrder(value)
+                      fetchJobsData(null, true)
+                    }}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="desc">Newest</SelectItem>
                     <SelectItem value="asc">Oldest</SelectItem>
@@ -399,7 +399,14 @@ export default function Jobs(): React.JSX.Element {
                       fetchJobsData(null, true)
                     }}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger
+                      className="w-full"
+                      showClear={!!filters.state && filters.state !== 'all'}
+                      onClear={() => {
+                        setFilters((prev) => ({ ...prev, state: '' }))
+                        fetchJobsData(null, true)
+                      }}
+                    >
                       <SelectValue placeholder="All States" />
                     </SelectTrigger>
                     <SelectContent>
@@ -419,7 +426,14 @@ export default function Jobs(): React.JSX.Element {
                       fetchJobsData(null, true)
                     }}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger
+                      className="w-full"
+                      showClear={!!filters.mode && filters.mode !== 'all'}
+                      onClear={() => {
+                        setFilters((prev) => ({ ...prev, mode: '' }))
+                        fetchJobsData(null, true)
+                      }}
+                    >
                       <SelectValue placeholder="All Formats" />
                     </SelectTrigger>
                     <SelectContent>
@@ -449,7 +463,19 @@ export default function Jobs(): React.JSX.Element {
                           fetchJobsData(null, true)
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger
+                          className="w-full"
+                          showClear={!!filters.stream_id && filters.stream_id !== 'all'}
+                          onClear={() => {
+                            setFilters((prev) => ({
+                              ...prev,
+                              stream_id: '',
+                              standard_id: '',
+                              subject_id: ''
+                            }))
+                            fetchJobsData(null, true)
+                          }}
+                        >
                           <SelectValue
                             placeholder={loadingOptions.streams ? 'Loading...' : 'All Streams'}
                           />
@@ -477,7 +503,19 @@ export default function Jobs(): React.JSX.Element {
                           fetchJobsData(null, true)
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger
+                          className="w-full"
+                          showClear={!!filters.board_id && filters.board_id !== 'all'}
+                          onClear={() => {
+                            setFilters((prev) => ({
+                              ...prev,
+                              board_id: '',
+                              standard_id: '',
+                              subject_id: ''
+                            }))
+                            fetchJobsData(null, true)
+                          }}
+                        >
                           <SelectValue
                             placeholder={loadingOptions.boards ? 'Loading...' : 'All Boards'}
                           />
@@ -505,7 +543,19 @@ export default function Jobs(): React.JSX.Element {
                           fetchJobsData(null, true)
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger
+                          className="w-full"
+                          showClear={!!filters.medium_id && filters.medium_id !== 'all'}
+                          onClear={() => {
+                            setFilters((prev) => ({
+                              ...prev,
+                              medium_id: '',
+                              standard_id: '',
+                              subject_id: ''
+                            }))
+                            fetchJobsData(null, true)
+                          }}
+                        >
                           <SelectValue
                             placeholder={loadingOptions.mediums ? 'Loading...' : 'All Mediums'}
                           />
@@ -545,7 +595,14 @@ export default function Jobs(): React.JSX.Element {
                           filters.board_id === 'all'
                         }
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger
+                          className="w-full"
+                          showClear={!!filters.standard_id && filters.standard_id !== 'all'}
+                          onClear={() => {
+                            setFilters((prev) => ({ ...prev, standard_id: '', subject_id: '' }))
+                            fetchJobsData(null, true)
+                          }}
+                        >
                           <SelectValue
                             placeholder={loadingOptions.standards ? 'Loading...' : 'All Standards'}
                           />
@@ -573,7 +630,14 @@ export default function Jobs(): React.JSX.Element {
                           filters.standard_id === 'all'
                         }
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger
+                          className="w-full"
+                          showClear={!!filters.subject_id && filters.subject_id !== 'all'}
+                          onClear={() => {
+                            setFilters((prev) => ({ ...prev, subject_id: '' }))
+                            fetchJobsData(null, true)
+                          }}
+                        >
                           <SelectValue
                             placeholder={loadingOptions.subjects ? 'Loading...' : 'All Subjects'}
                           />

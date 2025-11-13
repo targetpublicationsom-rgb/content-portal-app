@@ -322,7 +322,16 @@ export default function UploadForm({
                             onValueChange={field.onChange}
                             disabled={loadingOptions.streams}
                           >
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                                form.setValue('standard', '')
+                                form.setValue('subject', '')
+                                form.setValue('editionId', '')
+                              }}
+                            >
                               <SelectValue
                                 placeholder={
                                   loadingOptions.streams ? 'Loading...' : 'Select stream'
@@ -357,7 +366,13 @@ export default function UploadForm({
                             onValueChange={field.onChange}
                             disabled={loadingOptions.boards}
                           >
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                              }}
+                            >
                               <SelectValue
                                 placeholder={
                                   loadingOptions.boards ? 'Loading...' : 'Select board (optional)'
@@ -392,7 +407,16 @@ export default function UploadForm({
                             onValueChange={field.onChange}
                             disabled={loadingOptions.mediums}
                           >
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                                form.setValue('standard', '')
+                                form.setValue('subject', '')
+                                form.setValue('editionId', '')
+                              }}
+                            >
                               <SelectValue
                                 placeholder={
                                   loadingOptions.mediums ? 'Loading...' : 'Select medium'
@@ -431,7 +455,15 @@ export default function UploadForm({
                               !form.getValues('medium')
                             }
                           >
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                                form.setValue('subject', '')
+                                form.setValue('editionId', '')
+                              }}
+                            >
                               <SelectValue
                                 placeholder={
                                   loadingOptions.standards
@@ -469,7 +501,14 @@ export default function UploadForm({
                             onValueChange={field.onChange}
                             disabled={loadingOptions.subjects || !form.getValues('standard')}
                           >
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                                form.setValue('editionId', '')
+                              }}
+                            >
                               <SelectValue
                                 placeholder={
                                   loadingOptions.subjects
@@ -507,7 +546,13 @@ export default function UploadForm({
                         </span>
                         <div className="space-y-1">
                           <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger className="w-full h-10">
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                              }}
+                            >
                               <SelectValue placeholder="Select edition" />
                             </SelectTrigger>
                             <SelectContent>
