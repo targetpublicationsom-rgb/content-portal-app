@@ -17,6 +17,7 @@ interface API {
   ) => () => void
   readHtmlFile: (filePath: string) => Promise<string>
   readLogFile: (filePath: string) => Promise<string>
+  getAppVersion: () => Promise<string>
 }
 
 declare global {

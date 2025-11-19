@@ -12,11 +12,11 @@ export interface Job {
   created_at: string
   updated_at: string
   report_url: string | null
-  stream_id: number | null
+  stream_id: string | null
   stream_name: string | null
-  standard_id: number | null
+  standard_id: string | null
   standard_name: string | null
-  subject_id: number | null
+  subject_id: string | null
   subject_name: string | null
   upload_state: 'READY' | 'BLOCKED' | 'UPLOADED'
   upload_receipt_url: string | null
@@ -51,11 +51,11 @@ export interface JobDetails {
   workspace: string
   report_url: string
   stages: Stage[]
-  stream_id: number | null
+  stream_id: string | null
   stream_name: string | null
-  standard_id: number | null
+  standard_id: string | null
   standard_name: string | null
-  subject_id: number | null
+  subject_id: string | null
   subject_name: string | null
 }
 

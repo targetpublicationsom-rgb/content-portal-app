@@ -15,6 +15,55 @@ let serverRunning = false
 let serverStarting = false
 let isQuitting = false
 const DEFAULT_PORT = 6284
+let extractedExePath: string | null = null
+
+// Extract exe from ASAR to userData for OTA updates
+async function ensureContentOrchestratorExtracted(): Promise<string> {
+  const userDataPath = app.getPath('userData')
+  const toolsDir = path.join(userDataPath, 'tools')
+  const targetExePath = path.join(toolsDir, 'content-orchestrator.exe')
+  const versionFile = path.join(toolsDir, 'version.txt')
+  const currentVersion = app.getVersion()
+
+  // Check if already extracted and version matches
+  if (fs.existsSync(targetExePath) && fs.existsSync(versionFile)) {
+    try {
+      const extractedVersion = fs.readFileSync(versionFile, 'utf-8').trim()
+      if (extractedVersion === currentVersion) {
+        console.log('[Main] Content Orchestrator already extracted for version', currentVersion)
+        return targetExePath
+      }
+      console.log('[Main] Version mismatch - re-extracting exe (old:', extractedVersion, 'new:', currentVersion, ')')
+    } catch (err) {
+      console.log('[Main] Failed to read version file, re-extracting:', err)
+    }
+  }
+
+  // Create tools directory
+  if (!fs.existsSync(toolsDir)) {
+    fs.mkdirSync(toolsDir, { recursive: true })
+  }
+
+  // Determine source path (ASAR bundled)
+  const sourceExePath = is.dev
+    ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
+    : path.join(process.resourcesPath, 'app.asar', 'tools', 'content-orchestrator.exe')
+
+  console.log('[Main] Extracting Content Orchestrator from:', sourceExePath)
+  console.log('[Main] Extracting to:', targetExePath)
+
+  try {
+    // Copy exe from ASAR to userData
+    await fsPromises.copyFile(sourceExePath, targetExePath)
+    // Write version file
+    fs.writeFileSync(versionFile, currentVersion, 'utf-8')
+    console.log('[Main] Content Orchestrator extracted successfully')
+    return targetExePath
+  } catch (err) {
+    console.error('[Main] Failed to extract Content Orchestrator:', err)
+    throw err
+  }
+}
 
 // Handle single instance - prevent multiple instances from running
 const gotTheLock = app.requestSingleInstanceLock()
@@ -33,23 +82,36 @@ if (!gotTheLock) {
 }
 
 async function startPythonServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    serverStarting = true
-    serverRunning = false
+  serverStarting = true
+  serverRunning = false
 
-    // Notify renderer about server starting
+  // Notify renderer about server starting
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('server-status-change', {
+      status: 'starting',
+      message: 'Initializing Content Orchestrator...'
+    })
+  }
+
+  // Extract exe from ASAR if not already extracted
+  let executablePath: string
+  try {
+    executablePath = extractedExePath || (await ensureContentOrchestratorExtracted())
+    extractedExePath = executablePath
+  } catch (err) {
+    console.error('[Main] Failed to extract Content Orchestrator:', err)
+    serverStarting = false
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('server-status-change', {
-        status: 'starting',
-        message: 'Initializing Content Orchestrator...'
+        status: 'error',
+        message: 'Failed to extract Content Orchestrator'
       })
     }
+    throw err
+  }
+  // Starting Content Orchestrator
 
-    // Use proper path resolution for both development and production
-    const executablePath = is.dev
-      ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
-      : path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'content-orchestrator.exe')
-    // Starting Content Orchestrator
+  return new Promise((resolve, reject) => {
 
     try {
       if (process.platform === 'win32') {
@@ -726,3 +788,4 @@ ipcMain.handle('get-server-info', () => {
 ipcMain.handle('is-server-running', () => serverRunning)
 ipcMain.handle('is-server-starting', () => serverStarting)
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
+ipcMain.handle('get-app-version', () => app.getVersion())

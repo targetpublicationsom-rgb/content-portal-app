@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.contentportal.app
 productName: content-portal-windows-app
 directories:
   buildResources: build
@@ -17,7 +17,6 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
-  - tools/**
 win:
   executableName: content-portal-windows-app
   target:

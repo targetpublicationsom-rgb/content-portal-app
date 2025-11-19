@@ -30,7 +30,10 @@ const api = {
 
   // Read log file content
   readLogFile: (filePath: string): Promise<string> =>
-    ipcRenderer.invoke('read-log-file', filePath)
+    ipcRenderer.invoke('read-log-file', filePath),
+
+  // Get app version
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
