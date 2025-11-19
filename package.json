@@ -1,6 +1,6 @@
 {
   "name": "content-portal",
-  "version": "1.0.5",
+  "version": "0.0.0",
   "description": "Content Portal",
   "main": "./out/main/index.js",
   "author": "Target Learning Ventures",
