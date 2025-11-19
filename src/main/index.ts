@@ -7,6 +7,7 @@ import * as fsPromises from 'fs/promises'
 import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
+import { setupAutoUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -716,7 +717,10 @@ app.whenReady().then(async () => {
   // Then create window
   createWindow()
 
-  // Start server after window is created so we can send status updates
+  // Check for updates first - only start server if no update or update fails
+  await setupAutoUpdater(mainWindow)
+
+  // Start server after update check completes
   try {
     await startPythonServer()
     console.log('[Main] Python server started successfully')
