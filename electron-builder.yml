@@ -62,5 +62,6 @@ publish:
   owner: targetpublicationsom-rgb
   repo: content-portal-app
   releaseType: release
+  token: ${GITHUB_TOKEN}
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
