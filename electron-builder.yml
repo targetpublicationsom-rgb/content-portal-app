@@ -58,9 +58,9 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: s3
-  bucket: your-app-updates
-  region: us-east-1
-  acl: public-read
+  provider: github
+  owner: targetpublicationsom-rgb
+  repo: content-portal-app
+  releaseType: release
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
