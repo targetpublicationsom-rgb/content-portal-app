@@ -14,31 +14,9 @@ export default function UpdateOverlay(): React.JSX.Element | null {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
-    // Check if there's an ongoing update when component mounts
-    const checkInitialStatus = async (): Promise<void> => {
-      try {
-        const status = await window.api?.getUpdateStatus?.()
-        if (
-          status &&
-          (status.status === 'checking' ||
-            status.status === 'downloading' ||
-            status.status === 'installing')
-        ) {
-          setUpdateStatus(status as UpdateStatus)
-          setIsVisible(true)
-          console.log('[UpdateOverlay] Found existing update status:', status)
-        }
-      } catch (error) {
-        console.error('[UpdateOverlay] Failed to get initial update status:', error)
-      }
-    }
-
-    checkInitialStatus()
-
     // Listen to update status changes
     const removeListener = window.api?.onUpdateStatus?.(
       (_, data: { status: string; message: string; version?: string; percent?: number }) => {
-        console.log('[UpdateOverlay] Received update status:', data)
         const status = data.status as UpdateStatus['status']
         if (status === 'checking' || status === 'downloading' || status === 'installing') {
           setUpdateStatus(data as UpdateStatus)
@@ -50,17 +28,8 @@ export default function UpdateOverlay(): React.JSX.Element | null {
     return () => removeListener?.()
   }, [])
 
-  if (!updateStatus || !isVisible) {
-    console.log(
-      '[UpdateOverlay] Not showing overlay - updateStatus:',
-      updateStatus,
-      'isVisible:',
-      isVisible
-    )
-    return null
-  }
+  if (!updateStatus || !isVisible) return null
 
-  console.log('[UpdateOverlay] Showing overlay with status:', updateStatus)
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background backdrop-blur-sm">
       <Card className="w-full max-w-lg mx-4 shadow-2xl">

@@ -29,12 +29,6 @@ interface API {
     autoDownload: boolean
     autoInstallOnAppQuit: boolean
   }>
-  getUpdateStatus: () => Promise<{
-    status: string
-    message: string
-    version?: string
-    percent?: number
-  } | null>
   onUpdateStatus: (
     callback: (
       event: any,

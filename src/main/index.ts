@@ -7,7 +7,7 @@ import * as fsPromises from 'fs/promises'
 import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
-import { setupAutoUpdater, getCurrentUpdateStatus } from './updater'
+import { setupAutoUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -819,4 +819,3 @@ ipcMain.handle('is-server-running', () => serverRunning)
 ipcMain.handle('is-server-starting', () => serverStarting)
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
-ipcMain.handle('get-update-status', () => getCurrentUpdateStatus())
