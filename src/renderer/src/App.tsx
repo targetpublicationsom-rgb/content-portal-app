@@ -2,6 +2,7 @@ import { RouterProvider } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import StatusBar from './components/StatusBar'
 import ServerStartup from './components/ServerStartup'
+import UpdateOverlay from './components/UpdateOverlay'
 import { Toaster, toast } from 'react-hot-toast'
 import { router } from './router'
 
@@ -56,7 +57,12 @@ function App(): React.JSX.Element {
 
   // Show server startup screen if server is not ready
   if (!serverReady) {
-    return <ServerStartup onServerReady={handleServerReady} />
+    return (
+      <>
+        <UpdateOverlay />
+        <ServerStartup onServerReady={handleServerReady} />
+      </>
+    )
   }
 
   // Show main app when server is ready

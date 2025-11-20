@@ -18,6 +18,34 @@ interface API {
   readHtmlFile: (filePath: string) => Promise<string>
   readLogFile: (filePath: string) => Promise<string>
   getAppVersion: () => Promise<string>
+  checkForUpdatesManual: () => Promise<{
+    status: string
+    message: string
+    currentVersion?: string
+    latestVersion?: string
+  }>
+  getUpdateInfo: () => Promise<{
+    currentVersion: string
+    autoDownload: boolean
+    autoInstallOnAppQuit: boolean
+  }>
+  getUpdateStatus: () => Promise<{
+    status: string
+    message: string
+    version?: string
+    percent?: number
+  } | null>
+  onUpdateStatus: (
+    callback: (
+      event: any,
+      data: {
+        status: string
+        message: string
+        version?: string
+        percent?: number
+      }
+    ) => void
+  ) => () => void
 }
 
 declare global {

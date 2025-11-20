@@ -7,7 +7,7 @@ import * as fsPromises from 'fs/promises'
 import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
-import { setupAutoUpdater } from './updater'
+import { setupAutoUpdater, getCurrentUpdateStatus } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -384,7 +384,27 @@ function createWindow(): void {
     })
   } else {
     // Production: load from built files
-    const rendererPath = join(__dirname, '../renderer/index.html')
+    // In production, files are in app.asar/dist/renderer/ or out/renderer/
+    let rendererPath = join(__dirname, '../renderer/index.html')
+    
+    // Check if the default path exists
+    if (!fs.existsSync(rendererPath)) {
+      // Try alternative paths
+      const alternatives = [
+        join(process.resourcesPath, 'app.asar', 'dist', 'renderer', 'index.html'),
+        join(process.resourcesPath, 'app.asar', 'out', 'renderer', 'index.html'),
+        join(__dirname, '../../dist/renderer/index.html'),
+        join(__dirname, '../../out/renderer/index.html')
+      ]
+      
+      for (const altPath of alternatives) {
+        if (fs.existsSync(altPath)) {
+          rendererPath = altPath
+          break
+        }
+      }
+    }
+    
     console.log('[Main] Loading renderer from file:', rendererPath)
 
     // Check if the file exists before trying to load it
@@ -717,16 +737,22 @@ app.whenReady().then(async () => {
   // Then create window
   createWindow()
 
-  // Check for updates first - only start server if no update or update fails
+  // Check for updates immediately, before window loads
+  // Updates will be shown once window is ready
   await setupAutoUpdater(mainWindow)
 
-  // Start server after update check completes
-  try {
-    await startPythonServer()
-    console.log('[Main] Python server started successfully')
-  } catch (err) {
-    console.error('[Main] Failed to start Python server:', err)
-  }
+  // Wait for window to be ready before starting server
+  mainWindow?.webContents.once('did-finish-load', async () => {
+    console.log('[Main] Window loaded, starting server...')
+
+    // Start server after update check completes
+    try {
+      await startPythonServer()
+      console.log('[Main] Python server started successfully')
+    } catch (err) {
+      console.error('[Main] Failed to start Python server:', err)
+    }
+  })
 })
 
 // --- 🧩 Keep app running in tray ---
@@ -793,3 +819,4 @@ ipcMain.handle('is-server-running', () => serverRunning)
 ipcMain.handle('is-server-starting', () => serverStarting)
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
+ipcMain.handle('get-update-status', () => getCurrentUpdateStatus())

@@ -24,6 +24,17 @@ const api = {
     return () => ipcRenderer.removeListener('show-quit-blocked-toast', callback)
   },
 
+  // Listen to update status changes
+  onUpdateStatus: (
+    callback: (
+      event: any,
+      data: { status: string; message: string; version?: string; percent?: number }
+    ) => void
+  ) => {
+    ipcRenderer.on('update-status', callback)
+    return () => ipcRenderer.removeListener('update-status', callback)
+  },
+
   // Read HTML file content
   readHtmlFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('read-html-file', filePath),
