@@ -16,10 +16,11 @@ export function getCurrentUpdateStatus(): typeof currentUpdateStatus {
 
 export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void> {
   return new Promise((resolve) => {
-    // Force dev update config in development
+    // Disable updates in development
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-      autoUpdater.forceDevUpdateConfig = true
-      console.log('[Updater] Running in dev mode - forcing dev update config')
+      console.log('[Updater] Running in dev mode - updates disabled')
+      resolve()
+      return
     }
 
     // Wait for window to be ready before starting update check
