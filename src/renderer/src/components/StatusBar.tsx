@@ -5,6 +5,7 @@ import type { ServerInfo, HealthStatus } from '../types'
 export default function StatusBar(): React.JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
   const [health, setHealth] = useState<HealthStatus | null>(null)
+  const [appVersion, setAppVersion] = useState<string>('')
 
   useEffect(() => {
     const checkStatus = async (): Promise<void> => {
@@ -23,6 +24,9 @@ export default function StatusBar(): React.JSX.Element {
         // Handle status check error silently
       }
     }
+
+    // Get app version
+    window.api.getAppVersion().then(setAppVersion).catch(() => {})
 
     checkStatus()
     const interval = setInterval(checkStatus, 5000) // Check every 5 seconds
@@ -59,6 +63,12 @@ export default function StatusBar(): React.JSX.Element {
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Health:</span>
             <Badge variant={health.status === 'ok' ? 'success' : 'warning'}>{health.status}</Badge>
+          </div>
+        )}
+        {appVersion && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Version:</span>
+            <span className="font-mono text-xs">{appVersion}</span>
           </div>
         )}
       </div>

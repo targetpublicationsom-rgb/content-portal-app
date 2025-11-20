@@ -17,6 +17,7 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
     status: 'starting',
     message: 'Initializing Content Orchestrator...'
   })
+  const [showUpdateOverlay, setShowUpdateOverlay] = useState(false)
   const [dots, setDots] = useState('')
 
   useEffect(() => {
@@ -41,6 +42,20 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
 
     checkInitialStatus()
 
+    // Listen to update status changes
+    const removeUpdateListener = window.api?.onUpdateStatus?.(
+      (_, data: { status: string; message: string; version?: string; percent?: number }) => {
+        // Show update overlay when update is in progress
+        if (
+          data.status === 'checking' ||
+          data.status === 'downloading' ||
+          data.status === 'installing'
+        ) {
+          setShowUpdateOverlay(true)
+        }
+      }
+    )
+
     // Listen to server status changes
     const removeListener = window.api?.onServerStatusChange?.(
       (_, data: { status: string; message: string }) => {
@@ -53,7 +68,10 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
       }
     )
 
-    return removeListener
+    return () => {
+      removeListener?.()
+      removeUpdateListener?.()
+    }
   }, [onServerReady])
 
   // Animate dots for loading states
@@ -119,6 +137,11 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
     setServerStatus({ status: 'starting', message: 'Retrying server startup...' })
     // The main process will handle restarting the server
     window.location.reload()
+  }
+
+  // Don't show server startup screen if update is in progress
+  if (showUpdateOverlay) {
+    return <div className="min-h-screen bg-background"></div>
   }
 
   return (
