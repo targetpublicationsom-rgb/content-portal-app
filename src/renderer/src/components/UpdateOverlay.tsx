@@ -3,7 +3,7 @@ import { Download, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 
 interface UpdateStatus {
-  status: 'checking' | 'downloading' | 'installing' | 'no-update' | 'error' | 'done'
+  status: 'idle' | 'checking' | 'downloading' | 'downloaded' | 'installing' | 'no-update' | 'error'
   message: string
   version?: string
   percent?: number
@@ -20,13 +20,13 @@ export default function UpdateOverlay(): React.JSX.Element | null {
         const status = data.status as UpdateStatus['status']
         
         // Show overlay for active update states
-        if (status === 'checking' || status === 'downloading' || status === 'installing') {
+        if (status === 'checking' || status === 'downloading' || status === 'downloaded' || status === 'installing') {
           setUpdateStatus(data as UpdateStatus)
           setIsVisible(true)
         }
         
-        // Hide overlay for completion/error states after a delay
-        if (status === 'no-update' || status === 'done') {
+        // Hide overlay for completion states
+        if (status === 'no-update' || status === 'idle') {
           setIsVisible(false)
           setUpdateStatus(null)
         }

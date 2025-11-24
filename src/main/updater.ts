@@ -1,143 +1,241 @@
 import { autoUpdater } from 'electron-updater'
 import { BrowserWindow, app } from 'electron'
 
-let currentUpdateStatus: {
-  status: string
+// Update state machine
+type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+  | 'no-update'
+  | 'error'
+
+interface UpdateStatus {
+  state: UpdateState
   message: string
   version?: string
   percent?: number
-} | null = null
-
-
-// Get current update status (can be called from renderer)
-export function getCurrentUpdateStatus(): typeof currentUpdateStatus {
-  return currentUpdateStatus
+  error?: string
 }
 
+let currentState: UpdateState = 'idle'
+let mainWindowRef: BrowserWindow | null = null
+let updateResolve: (() => void) | null = null
+let isUpdateDownloaded = false
+
+// State transition function
+function transitionTo(newState: UpdateState, status: UpdateStatus): void {
+  console.log(`[Updater] State transition: ${currentState} → ${newState}`)
+  currentState = newState
+
+  // Send status to renderer
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    mainWindowRef.webContents.send('update-status', {
+      status: newState,
+      ...status
+    })
+  }
+
+  // Resolve promise for non-blocking states
+  if ((newState === 'no-update' || newState === 'error') && updateResolve) {
+    console.log(`[Updater] Resolving promise - proceeding to server start`)
+    const resolve = updateResolve
+    updateResolve = null
+    resolve()
+  }
+}
+
+// Configure auto-updater settings
+function configureAutoUpdater(): void {
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = false // We handle installation manually
+  autoUpdater.allowPrerelease = false
+  autoUpdater.allowDowngrade = false
+}
+
+// Setup all event listeners
+function setupEventListeners(): void {
+  // Checking for updates
+  autoUpdater.on('checking-for-update', () => {
+    transitionTo('checking', {
+      state: 'checking',
+      message: 'Checking for updates...'
+    })
+  })
+
+  // Update available - will auto-download
+  autoUpdater.on('update-available', (info) => {
+    transitionTo('downloading', {
+      state: 'downloading',
+      message: `Downloading update ${info.version}...`,
+      version: info.version,
+      percent: 0
+    })
+  })
+
+  // No update available
+  autoUpdater.on('update-not-available', () => {
+    transitionTo('no-update', {
+      state: 'no-update',
+      message: 'App is up to date'
+    })
+  })
+
+  // Download progress
+  autoUpdater.on('download-progress', (progress) => {
+    const percent = Math.round(progress.percent)
+    
+    if (currentState !== 'downloading') {
+      transitionTo('downloading', {
+        state: 'downloading',
+        message: `Downloading update... ${percent}%`,
+        percent
+      })
+    } else {
+      // Just update the UI, don't transition state
+      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        mainWindowRef.webContents.send('update-status', {
+          status: 'downloading',
+          state: 'downloading',
+          message: `Downloading update... ${percent}%`,
+          percent
+        })
+      }
+    }
+  })
+
+  // Update downloaded - ready to install
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[Updater] Update ${info.version} downloaded - ready to install`)
+    isUpdateDownloaded = true
+    
+    transitionTo('downloaded', {
+      state: 'downloaded',
+      message: `Update ${info.version} ready to install`,
+      version: info.version
+    })
+
+    // Show installing message and quit to install
+    setTimeout(() => {
+      transitionTo('installing', {
+        state: 'installing',
+        message: 'Installing update and restarting...',
+        version: info.version
+      })
+
+      // Wait a moment for UI to show, then install
+      setTimeout(() => {
+        console.log('[Updater] Quitting to install update...')
+        autoUpdater.quitAndInstall(false, true)
+      }, 2000)
+    }, 1000)
+  })
+
+  // Error during update
+  autoUpdater.on('error', (error) => {
+    console.error('[Updater] Error:', error.message)
+    transitionTo('error', {
+      state: 'error',
+      message: 'Update check failed',
+      error: error.message
+    })
+  })
+}
+
+// Check for updates
+async function checkForUpdates(): Promise<void> {
+  return new Promise((resolve) => {
+    if (currentState !== 'idle') {
+      console.warn(`[Updater] Already in state: ${currentState}`)
+      resolve()
+      return
+    }
+
+    updateResolve = resolve
+
+    // Set timeout to force resolve if update takes too long
+    const timeout = setTimeout(() => {
+      if (currentState === 'checking' || currentState === 'downloading') {
+        console.warn('[Updater] Update check timeout - proceeding anyway')
+        if (updateResolve) {
+          const resolve = updateResolve
+          updateResolve = null
+          resolve()
+        }
+      }
+    }, 30000) // 30 second timeout
+
+    // Clear timeout when resolved
+    const originalResolve = updateResolve
+    updateResolve = () => {
+      clearTimeout(timeout)
+      if (originalResolve) originalResolve()
+    }
+
+    // Start checking
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[Updater] Failed to check for updates:', err)
+      clearTimeout(timeout)
+      transitionTo('error', {
+        state: 'error',
+        message: 'Failed to check for updates',
+        error: err.message
+      })
+    })
+  })
+}
+
+// Main setup function
 export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void> {
   return new Promise((resolve) => {
-    // Disable updates in development
+    mainWindowRef = mainWindow
+
+    // Skip in development
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
       console.log('[Updater] Running in dev mode - updates disabled')
       resolve()
       return
     }
 
-    // Check if this is first run after update (squirrel event)
+    // Skip on first run after update (Squirrel event)
     if (process.argv.includes('--squirrel-firstrun')) {
       console.log('[Updater] First run after update - skipping update check')
       resolve()
       return
     }
 
-    // Wait for window to be ready before starting update check
-    const startUpdateCheck = (): void => {
-      console.log('[Updater] Starting update check...')
-      autoUpdater.checkForUpdates().catch((err) => {
-        console.error('[Updater] Check failed:', err, '- proceeding to start server')
+    // Configure and setup
+    configureAutoUpdater()
+    setupEventListeners()
+
+    // Check for updates
+    console.log('[Updater] Starting update check...')
+    checkForUpdates()
+      .then(() => {
+        console.log('[Updater] Update check complete - proceeding to server start')
         resolve()
       })
-    }
-
-    // If window is ready, start immediately, otherwise wait
-    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoadingMainFrame()) {
-      startUpdateCheck()
-    } else {
-      mainWindow?.webContents.once('did-finish-load', () => {
-        console.log('[Updater] Window ready, starting update check')
-        setTimeout(startUpdateCheck, 500) // Small delay to ensure renderer is ready
+      .catch((err) => {
+        console.error('[Updater] Update check failed:', err)
+        resolve() // Always resolve to allow app to continue
       })
-    }
-
-    // Configure auto-updater
-    autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true // Install silently when app quits
-
-    autoUpdater.on('checking-for-update', () => {
-      console.log('[Updater] Checking for updates...')
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.isLoadingMainFrame() === false) {
-        mainWindow.webContents.send('update-status', {
-          status: 'checking',
-          message: 'Checking for updates...'
-        })
-      }
-    })
-
-    autoUpdater.on('update-available', (info) => {
-      console.log('[Updater] Update available:', info.version, '- downloading...')
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.isLoadingMainFrame() === false) {
-        mainWindow.webContents.send('update-status', {
-          status: 'downloading',
-          message: `Downloading version ${info.version}...`,
-          version: info.version
-        })
-      }
-    })
-
-    autoUpdater.on('update-not-available', () => {
-      console.log('[Updater] No updates available - proceeding to start server')
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-status', {
-          status: 'no-update',
-          message: 'No updates available'
-        })
-      }
-      resolve()
-    })
-
-    autoUpdater.on('download-progress', (progress) => {
-      const percent = Math.round(progress.percent)
-      console.log(`[Updater] Download progress: ${percent}%`)
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.isLoadingMainFrame() === false) {
-        mainWindow.webContents.send('update-status', {
-          status: 'downloading',
-          message: `Downloading update... ${percent}%`,
-          percent
-        })
-      }
-    })
-
-    autoUpdater.on('update-downloaded', (info) => {
-      console.log('[Updater] Update downloaded:', info.version, '- restarting to install')
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.isLoadingMainFrame() === false) {
-        mainWindow.webContents.send('update-status', {
-          status: 'installing',
-          message: 'Installing update and restarting...',
-          version: info.version
-        })
-      }
-
-      // Wait longer for the UI to show the message
-      setTimeout(() => {
-        autoUpdater.quitAndInstall(true, true) // true = silent install, true = force run after
-      }, 3000) // 3 seconds delay to show the UI
-    })
-
-    autoUpdater.on('error', (err) => {
-      console.error('[Updater] Error:', err, '- proceeding to start server anyway')
-      currentUpdateStatus = null
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-status', {
-          status: 'done',
-          message: 'Continuing...'
-        })
-      }
-      // Resolve immediately on error
-      resolve()
-    })
-
-    // When renderer is ready, send cached status if any
-    if (mainWindow) {
-      mainWindow.webContents.on('did-finish-load', () => {
-        if (currentUpdateStatus) {
-          setTimeout(() => {
-            mainWindow.webContents.send('update-status', currentUpdateStatus)
-            console.log('[Updater] Re-sent cached update status to renderer')
-          }, 100)
-        }
-      })
-    }
-
-    // Don't call checkForUpdates here - it's called in startUpdateCheck
   })
+}
+
+// Get current update state
+export function getUpdateState(): UpdateState {
+  return currentState
+}
+
+// Check if update is downloaded and ready
+export function isUpdateReady(): boolean {
+  return isUpdateDownloaded
+}
+
+// Reset state (for testing)
+export function resetUpdateState(): void {
+  currentState = 'idle'
+  isUpdateDownloaded = false
+  updateResolve = null
 }
