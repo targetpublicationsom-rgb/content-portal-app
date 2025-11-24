@@ -15,7 +15,7 @@ import * as fsPromises from 'fs/promises'
 import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
-import { setupAutoUpdater } from './updater'
+import { setupAutoUpdater, isUpdateReady } from './updater'
 import { execSync } from 'child_process'
 import {
   initializeServerManager,
@@ -573,6 +573,13 @@ app.on('window-all-closed', () => {
 
 // --- 🧨 Graceful Quit ---
 app.on('before-quit', async (event) => {
+  // Allow immediate quit if update is being installed
+  if (isUpdateReady()) {
+    console.log('[Main] Update installation - allowing immediate quit')
+    setQuitting(true)
+    return
+  }
+
   event.preventDefault()
   console.log('[Main] Stopping server before quit...')
   setQuitting(true)

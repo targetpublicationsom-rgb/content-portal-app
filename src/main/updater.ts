@@ -124,11 +124,12 @@ function setupEventListeners(): void {
         version: info.version
       })
 
-      // Wait a moment for UI to show, then install
+      // Give user time to see the installing state (3 seconds)
       setTimeout(() => {
-        console.log('[Updater] Quitting to install update...')
-        autoUpdater.quitAndInstall(false, true)
-      }, 2000)
+        console.log('[Updater] Installing update and restarting app...')
+        // isSilent = true (no installer UI), isForceRunAfter = true (restart app)
+        autoUpdater.quitAndInstall(true, true)
+      }, 3000)
     }, 1000)
   })
 
