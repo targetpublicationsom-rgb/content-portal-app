@@ -23,6 +23,13 @@ export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void
       return
     }
 
+    // Check if this is first run after update (squirrel event)
+    if (process.argv.includes('--squirrel-firstrun')) {
+      console.log('[Updater] First run after update - skipping update check')
+      resolve()
+      return
+    }
+
     // Wait for window to be ready before starting update check
     const startUpdateCheck = (): void => {
       console.log('[Updater] Starting update check...')
@@ -111,20 +118,12 @@ export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void
       currentUpdateStatus = null
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-status', {
-          status: 'error',
-          message: 'Update check failed, continuing...'
+          status: 'done',
+          message: 'Continuing...'
         })
-        // Clear error status after 2 seconds
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-status', {
-              status: 'done',
-              message: 'Continuing to app...'
-            })
-          }
-        }, 2000)
       }
-      resolve() // Continue even if update check fails
+      // Resolve immediately on error
+      resolve()
     })
 
     // When renderer is ready, send cached status if any

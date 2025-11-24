@@ -19,6 +19,7 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
   })
   const [showUpdateOverlay, setShowUpdateOverlay] = useState(false)
   const [dots, setDots] = useState('')
+  const [autoRetryCount, setAutoRetryCount] = useState(0)
 
   useEffect(() => {
     // Check initial server status
@@ -33,10 +34,54 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
         } else if (isStarting) {
           setServerStatus({ status: 'starting', message: 'Starting Content Orchestrator...' })
         } else {
-          setServerStatus({ status: 'error', message: 'Server not starting' })
+          // Wait a bit before checking again, server might still be initializing
+          setTimeout(async () => {
+            const isRunningRetry = await window.api?.isServerRunning()
+            const isStartingRetry = await window.api?.isServerStarting()
+            
+            if (isRunningRetry) {
+              setServerStatus({ status: 'ready', message: 'Content Orchestrator is ready!' })
+              onServerReady()
+            } else if (isStartingRetry) {
+              setServerStatus({ status: 'starting', message: 'Starting Content Orchestrator...' })
+            } else if (autoRetryCount === 0) {
+              // Auto-retry once if server not starting
+              setAutoRetryCount(1)
+              setTimeout(() => {
+                window.location.reload()
+              }, 3000)
+            } else {
+              setServerStatus({ status: 'error', message: 'Server failed to start' })
+            }
+          }, 2000)
         }
       } catch {
-        setServerStatus({ status: 'error', message: 'Unable to check server status' })
+        // Wait before retrying on error
+        setTimeout(async () => {
+          try {
+            const isRunning = await window.api?.isServerRunning()
+            if (isRunning) {
+              setServerStatus({ status: 'ready', message: 'Content Orchestrator is ready!' })
+              onServerReady()
+            } else if (autoRetryCount === 0) {
+              setAutoRetryCount(1)
+              setTimeout(() => {
+                window.location.reload()
+              }, 3000)
+            } else {
+              setServerStatus({ status: 'error', message: 'Unable to check server status' })
+            }
+          } catch {
+            if (autoRetryCount === 0) {
+              setAutoRetryCount(1)
+              setTimeout(() => {
+                window.location.reload()
+              }, 3000)
+            } else {
+              setServerStatus({ status: 'error', message: 'Unable to check server status' })
+            }
+          }
+        }, 2000)
       }
     }
 
@@ -139,6 +184,7 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
 
   const handleRetry = async (): Promise<void> => {
     setServerStatus({ status: 'starting', message: 'Retrying server startup...' })
+    setAutoRetryCount(0) // Reset auto-retry count
     // The main process will handle restarting the server
     window.location.reload()
   }

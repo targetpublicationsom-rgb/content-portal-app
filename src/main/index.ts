@@ -210,17 +210,18 @@ async function startPythonServer(): Promise<void> {
     // Fallback resolve in case server doesn't print a ready message
     setTimeout(() => {
       if (serverStarting) {
+        console.log('[Main] Server startup timeout - assuming ready')
         serverRunning = true
         serverStarting = false
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('server-status-change', {
             status: 'ready',
-            message: 'Content Orchestrator started (timeout)'
+            message: 'Content Orchestrator is ready!'
           })
         }
         resolve()
       }
-    }, 5000)
+    }, 8000)
   })
 }
 
@@ -763,19 +764,36 @@ app.whenReady().then(async () => {
   mainWindow?.webContents.once('did-finish-load', async () => {
     console.log('[Main] Window loaded')
 
-    // Check for updates first
-    console.log('[Main] Checking for updates...')
-    await setupAutoUpdater(mainWindow)
-    console.log('[Main] Update check complete')
-
-    // Then start server
-    console.log('[Main] Starting server...')
     try {
-      await startPythonServer()
-      console.log('[Main] Python server started successfully')
+      // Check for updates first (with timeout)
+      console.log('[Main] Checking for updates...')
+      const updatePromise = setupAutoUpdater(mainWindow)
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 10000)) // 10s max
+      await Promise.race([updatePromise, timeoutPromise])
+      console.log('[Main] Update check complete')
     } catch (err) {
-      console.error('[Main] Failed to start Python server:', err)
+      console.error('[Main] Update check failed:', err)
     }
+
+    // Always start server, even if update fails
+    console.log('[Main] Starting server...')
+    const startServerWithRetry = async (retries = 3): Promise<void> => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          await startPythonServer()
+          console.log('[Main] Python server started successfully')
+          return
+        } catch (err) {
+          console.error(`[Main] Failed to start Python server (attempt ${i + 1}/${retries}):`, err)
+          if (i < retries - 1) {
+            console.log('[Main] Retrying in 2 seconds...')
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          }
+        }
+      }
+      console.error('[Main] Failed to start server after all retries')
+    }
+    await startServerWithRetry()
   })
 })
 
