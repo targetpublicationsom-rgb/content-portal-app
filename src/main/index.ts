@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain } from 'electron'
+import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, globalShortcut } from 'electron'
 import { spawn, execSync, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -731,6 +731,28 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Register global shortcut to toggle DevTools (Ctrl+Shift+I)
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools()
+      } else {
+        mainWindow.webContents.openDevTools()
+      }
+    }
+  })
+
+  // Register F12 for DevTools as well
+  globalShortcut.register('F12', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools()
+      } else {
+        mainWindow.webContents.openDevTools()
+      }
+    }
+  })
+
   // Create tray first to ensure it's available
   createTray()
 
@@ -783,6 +805,9 @@ app.on('before-quit', async (event) => {
 // --- 🔄 Final cleanup on quit ---
 app.on('will-quit', async () => {
   console.log('[Main] App is about to quit - final cleanup')
+
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll()
 
   // Final attempt to kill any remaining content-orchestrator processes
   if (process.platform === 'win32') {
