@@ -9,6 +9,7 @@ import { router } from './router'
 function App(): React.JSX.Element {
   const [serverReady, setServerReady] = useState(false)
   const [initialCheckComplete, setInitialCheckComplete] = useState(false)
+  const [updateInProgress, setUpdateInProgress] = useState(false)
 
   useEffect(() => {
     const checkServerStatus = async (): Promise<void> => {
@@ -31,14 +32,26 @@ function App(): React.JSX.Element {
       })
     }
 
+    // IPC listener for update status
+    const handleUpdateStatus = (_event: any, data: { status: string }) => {
+      // Track if update is actively in progress (downloading or installing)
+      const inProgress =
+        data.status === 'downloading' ||
+        data.status === 'downloaded' ||
+        data.status === 'installing'
+      setUpdateInProgress(inProgress)
+    }
+
     // Set up IPC listeners
     const removeQuitBlockedListener = window.api?.onQuitBlocked?.(handleQuitBlocked)
+    const removeUpdateListener = window.api?.onUpdateStatus?.(handleUpdateStatus)
 
     checkServerStatus()
 
     // Cleanup listener on component unmount
     return () => {
       removeQuitBlockedListener?.()
+      removeUpdateListener?.()
     }
   }, [])
 
@@ -55,8 +68,13 @@ function App(): React.JSX.Element {
     )
   }
 
-  // Show server startup screen if server is not ready
+  // Show server startup screen if server is not ready and no update in progress
   if (!serverReady) {
+    // Show only update overlay during update, hide server startup
+    if (updateInProgress) {
+      return <UpdateOverlay />
+    }
+    
     return (
       <>
         <UpdateOverlay />

@@ -1,5 +1,13 @@
-import { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, globalShortcut } from 'electron'
-import { spawn, execSync, ChildProcessWithoutNullStreams } from 'child_process'
+import {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  shell,
+  nativeImage,
+  ipcMain,
+  globalShortcut
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import * as fs from 'fs'
@@ -7,64 +15,21 @@ import * as fsPromises from 'fs/promises'
 import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
-import { setupAutoUpdater } from './updater'
+import { setupAutoUpdater, isUpdateReady } from './updater'
+import { execSync } from 'child_process'
+import {
+  initializeServerManager,
+  startServer,
+  stopServer,
+  setQuitting,
+  isServerRunning,
+  isServerStarting,
+  getServerPort
+} from './serverManager'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-let serverProcess: ChildProcessWithoutNullStreams | null = null
-let serverRunning = false
-let serverStarting = false
-let isQuitting = false
 const DEFAULT_PORT = 6284
-let extractedExePath: string | null = null
-
-// Extract exe from ASAR to userData for OTA updates
-async function ensureContentOrchestratorExtracted(): Promise<string> {
-  const userDataPath = app.getPath('userData')
-  const toolsDir = path.join(userDataPath, 'tools')
-  const targetExePath = path.join(toolsDir, 'content-orchestrator.exe')
-  const versionFile = path.join(toolsDir, 'version.txt')
-  const currentVersion = app.getVersion()
-
-  // Check if already extracted and version matches
-  if (fs.existsSync(targetExePath) && fs.existsSync(versionFile)) {
-    try {
-      const extractedVersion = fs.readFileSync(versionFile, 'utf-8').trim()
-      if (extractedVersion === currentVersion) {
-        console.log('[Main] Content Orchestrator already extracted for version', currentVersion)
-        return targetExePath
-      }
-      console.log('[Main] Version mismatch - re-extracting exe (old:', extractedVersion, 'new:', currentVersion, ')')
-    } catch (err) {
-      console.log('[Main] Failed to read version file, re-extracting:', err)
-    }
-  }
-
-  // Create tools directory
-  if (!fs.existsSync(toolsDir)) {
-    fs.mkdirSync(toolsDir, { recursive: true })
-  }
-
-  // Determine source path (ASAR bundled)
-  const sourceExePath = is.dev
-    ? path.join(process.cwd(), 'tools', 'content-orchestrator.exe')
-    : path.join(process.resourcesPath, 'app.asar', 'tools', 'content-orchestrator.exe')
-
-  console.log('[Main] Extracting Content Orchestrator from:', sourceExePath)
-  console.log('[Main] Extracting to:', targetExePath)
-
-  try {
-    // Copy exe from ASAR to userData
-    await fsPromises.copyFile(sourceExePath, targetExePath)
-    // Write version file
-    fs.writeFileSync(versionFile, currentVersion, 'utf-8')
-    console.log('[Main] Content Orchestrator extracted successfully')
-    return targetExePath
-  } catch (err) {
-    console.error('[Main] Failed to extract Content Orchestrator:', err)
-    throw err
-  }
-}
 
 // Handle single instance - prevent multiple instances from running
 const gotTheLock = app.requestSingleInstanceLock()
@@ -82,164 +47,13 @@ if (!gotTheLock) {
   })
 }
 
-async function startPythonServer(): Promise<void> {
-  serverStarting = true
-  serverRunning = false
-
-  // Notify renderer about server starting
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('server-status-change', {
-      status: 'starting',
-      message: 'Initializing Content Orchestrator...'
-    })
-  }
-
-  // Extract exe from ASAR if not already extracted
-  let executablePath: string
-  try {
-    executablePath = extractedExePath || (await ensureContentOrchestratorExtracted())
-    extractedExePath = executablePath
-  } catch (err) {
-    console.error('[Main] Failed to extract Content Orchestrator:', err)
-    serverStarting = false
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('server-status-change', {
-        status: 'error',
-        message: 'Failed to extract Content Orchestrator'
-      })
-    }
-    throw err
-  }
-  // Starting Content Orchestrator
-
-  return new Promise((resolve, reject) => {
-
-    try {
-      if (process.platform === 'win32') {
-        execSync('taskkill /IM content-orchestrator.exe /F', { stdio: 'ignore' })
-      } else {
-        execSync('pkill -f "content-orchestrator"', { stdio: 'ignore' })
-      }
-    } catch {
-      // Ignore errors if nothing to kill
-    }
-
-    if (!fs.existsSync(executablePath)) {
-      console.error('[Main] Content Orchestrator executable not found:', executablePath)
-      serverStarting = false
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-status-change', {
-          status: 'error',
-          message: 'Content Orchestrator executable not found'
-        })
-      }
-      reject(new Error('Content Orchestrator executable missing'))
-      return
-    }
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('server-status-change', {
-        status: 'starting',
-        message: 'Starting Content Orchestrator process...'
-      })
-    }
-
-    serverProcess = spawn(executablePath, [], {
-      detached: false,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
-
-    serverProcess.stdout.on('data', (data) => {
-      const message = data.toString().trim()
-      if (
-        message.includes('Running on') ||
-        message.includes('Server started') ||
-        message.includes('started')
-      ) {
-        serverRunning = true
-        serverStarting = false
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-status-change', {
-            status: 'ready',
-            message: 'Content Orchestrator is ready!'
-          })
-        }
-        resolve()
-      }
-    })
-
-    serverProcess.stderr.on('data', (data) => {
-      console.error(`[Orchestrator STDERR]: ${data}`)
-    })
-
-    serverProcess.on('error', (err) => {
-      console.error('[Main] Failed to start Content Orchestrator process:', err)
-      serverRunning = false
-      serverStarting = false
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-status-change', {
-          status: 'error',
-          message: `Failed to start server: ${err.message}`
-        })
-      }
-      reject(err)
-    })
-
-    serverProcess.on('close', (code) => {
-      console.log(`[Content Orchestrator] exited with code ${code}`)
-      serverRunning = false
-      serverStarting = false
-      serverProcess = null
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-status-change', {
-          status: 'stopped',
-          message: 'Content Orchestrator stopped'
-        })
-      }
-
-      // ✅ Restart only if not quitting
-      if (!isQuitting) {
-        console.log('[Main] Content Orchestrator closed unexpectedly — restarting...')
-        startPythonServer().catch((err) =>
-          console.error('[Main] Failed to restart Content Orchestrator:', err)
-        )
-      }
-    })
-
-    // Fallback resolve in case server doesn't print a ready message
-    setTimeout(() => {
-      if (serverStarting) {
-        console.log('[Main] Server startup timeout - assuming ready')
-        serverRunning = true
-        serverStarting = false
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-status-change', {
-            status: 'ready',
-            message: 'Content Orchestrator is ready!'
-          })
-        }
-        resolve()
-      }
-    }, 8000)
-  })
-}
+// Server functions now handled by serverManager.ts
 
 // --- 🔍 Check for Running Jobs ---
 async function checkForRunningJobs(): Promise<boolean> {
   try {
-    // Get the actual server port from configuration
-    let serverPort = DEFAULT_PORT
-    try {
-      const appDataDir = app.getPath('appData')
-      const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
-      if (fs.existsSync(filePath)) {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-        serverPort = data.port || DEFAULT_PORT
-      }
-    } catch {
-      // Use default port on error
-    }
+    // Get the actual server port
+    const serverPort = getServerPort()
 
     // Only use the configured server port
     try {
@@ -277,47 +91,7 @@ async function checkForRunningJobs(): Promise<boolean> {
   }
 }
 
-// --- 🧹 Stop Content Orchestrator ---
-async function stopPythonServer(): Promise<void> {
-  if (!serverProcess) {
-    return
-  }
-
-  try {
-    if (process.platform === 'win32') {
-      // Kill the process tree forcefully on Windows
-      execSync(`taskkill /PID ${serverProcess.pid} /T /F`, { timeout: 10000 })
-
-      // Also try to kill any remaining content-orchestrator.exe processes
-      try {
-        execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 5000 })
-      } catch {
-        // Ignore error if no processes found
-      }
-    } else {
-      if (serverProcess.pid) {
-        process.kill(serverProcess.pid, 'SIGTERM')
-
-        // Wait a moment then force kill if still running
-        setTimeout(() => {
-          try {
-            if (serverProcess && serverProcess.pid) {
-              process.kill(serverProcess.pid, 'SIGKILL')
-            }
-          } catch {
-            // Process already dead
-          }
-        }, 2000)
-      }
-    }
-  } catch {
-    // Even if there's an error, continue with cleanup
-  }
-
-  serverProcess = null
-  serverRunning = false
-  serverStarting = false
-}
+// Server stop function now handled by serverManager.ts
 
 // --- 🪟 Create Window ---
 function createWindow(): void {
@@ -350,7 +124,8 @@ function createWindow(): void {
   })
 
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+    // Don't minimize to tray if app is quitting (server stopped)
+    if (isServerRunning() || isServerStarting()) {
       event.preventDefault()
       mainWindow?.hide()
 
@@ -652,9 +427,9 @@ function createTray(): void {
           }
 
           // No running jobs, proceed with quit
-          isQuitting = true
           console.log('[Main] No running jobs, proceeding with quit...')
-          await stopPythonServer()
+          setQuitting(true)
+          await stopServer()
           app.quit()
         }
       }
@@ -760,40 +535,34 @@ app.whenReady().then(async () => {
   // Then create window
   createWindow()
 
+  // Initialize server manager
+  if (mainWindow) {
+    initializeServerManager(mainWindow)
+  }
+
   // Wait for window to be ready, then check for updates, then start server
   mainWindow?.webContents.once('did-finish-load', async () => {
-    console.log('[Main] Window loaded')
+    console.log('[Main] ===== App Startup Flow =====')
+    console.log('[Main] Step 1: Window loaded')
 
     try {
-      // Check for updates first (with timeout)
-      console.log('[Main] Checking for updates...')
-      const updatePromise = setupAutoUpdater(mainWindow)
-      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 10000)) // 10s max
-      await Promise.race([updatePromise, timeoutPromise])
-      console.log('[Main] Update check complete')
+      // Step 2: Check for updates
+      console.log('[Main] Step 2: Checking for updates...')
+      await setupAutoUpdater(mainWindow)
+      console.log('[Main] Step 2: Update check complete')
     } catch (err) {
-      console.error('[Main] Update check failed:', err)
+      console.error('[Main] Step 2: Update check failed:', err)
     }
 
-    // Always start server, even if update fails
-    console.log('[Main] Starting server...')
-    const startServerWithRetry = async (retries = 3): Promise<void> => {
-      for (let i = 0; i < retries; i++) {
-        try {
-          await startPythonServer()
-          console.log('[Main] Python server started successfully')
-          return
-        } catch (err) {
-          console.error(`[Main] Failed to start Python server (attempt ${i + 1}/${retries}):`, err)
-          if (i < retries - 1) {
-            console.log('[Main] Retrying in 2 seconds...')
-            await new Promise(resolve => setTimeout(resolve, 2000))
-          }
-        }
-      }
-      console.error('[Main] Failed to start server after all retries')
+    // Step 3: Start server (with built-in retry logic)
+    console.log('[Main] Step 3: Starting server...')
+    try {
+      await startServer()
+      console.log('[Main] Step 3: Server started successfully')
+      console.log('[Main] ===== App Ready =====')
+    } catch (err) {
+      console.error('[Main] Step 3: Server start failed:', err)
     }
-    await startServerWithRetry()
   })
 })
 
@@ -804,12 +573,17 @@ app.on('window-all-closed', () => {
 
 // --- 🧨 Graceful Quit ---
 app.on('before-quit', async (event) => {
-  if (isQuitting) return
+  // Allow immediate quit if update is being installed
+  if (isUpdateReady()) {
+    console.log('[Main] Update installation - allowing immediate quit')
+    setQuitting(true)
+    return
+  }
 
   event.preventDefault()
-  isQuitting = true
-  console.log('[Main] Stopping Python server before quit...')
-  await stopPythonServer()
+  console.log('[Main] Stopping server before quit...')
+  setQuitting(true)
+  await stopServer()
 
   // Clean up tray
   if (tray) {
@@ -817,9 +591,8 @@ app.on('before-quit', async (event) => {
     tray = null
   }
 
-  console.log('[Main] Python server stopped - allowing app to quit')
-  // Don't call app.quit() here as it creates a loop - just let the event continue
-  isQuitting = false // Reset the flag to allow the quit to proceed naturally
+  console.log('[Main] Server stopped - exiting app')
+  app.exit(0)
 })
 
 // --- 🔄 Final cleanup on quit ---
@@ -829,12 +602,15 @@ app.on('will-quit', async () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll()
 
+  // Ensure server is stopped
+  setQuitting(true)
+  
   // Final attempt to kill any remaining content-orchestrator processes
   if (process.platform === 'win32') {
     try {
       execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 3000 })
       console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
-    } catch (e) {
+    } catch {
       // No processes found or already cleaned up
       console.log('[Main] Final cleanup: no content-orchestrator processes to clean up')
     }
@@ -860,7 +636,7 @@ ipcMain.handle('get-server-info', () => {
   }
 })
 
-ipcMain.handle('is-server-running', () => serverRunning)
-ipcMain.handle('is-server-starting', () => serverStarting)
+ipcMain.handle('is-server-running', () => isServerRunning())
+ipcMain.handle('is-server-starting', () => isServerStarting())
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
