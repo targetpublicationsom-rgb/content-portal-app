@@ -44,6 +44,11 @@ function transitionTo(newState: UpdateState, status: UpdateStatus): void {
     updateResolve = null
     resolve()
   }
+  
+  // Don't resolve during download/install phases - keep waiting
+  if (newState === 'downloading' || newState === 'downloaded' || newState === 'installing') {
+    console.log(`[Updater] Update in progress (${newState}) - blocking server start`)
+  }
 }
 
 // Configure auto-updater settings
@@ -155,17 +160,19 @@ async function checkForUpdates(): Promise<void> {
 
     updateResolve = resolve
 
-    // Set timeout to force resolve if update takes too long
+    // Set timeout to force resolve only if stuck in checking phase
+    // Don't timeout during download - let it complete
     const timeout = setTimeout(() => {
-      if (currentState === 'checking' || currentState === 'downloading') {
-        console.warn('[Updater] Update check timeout - proceeding anyway')
+      if (currentState === 'checking') {
+        console.warn('[Updater] Update check timeout - no update found, proceeding')
         if (updateResolve) {
           const resolve = updateResolve
           updateResolve = null
           resolve()
         }
       }
-    }, 30000) // 30 second timeout
+      // If downloading, don't timeout - let download complete
+    }, 30000) // 30 second timeout for checking only
 
     // Clear timeout when resolved
     const originalResolve = updateResolve
@@ -199,8 +206,8 @@ export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void
       return
     }
 
-    // Skip on first run after update (Squirrel event)
-    if (process.argv.includes('--squirrel-firstrun')) {
+    // Skip on first run after update
+    if (process.argv.includes('--squirrel-firstrun') || process.argv.includes('--updated')) {
       console.log('[Updater] First run after update - skipping update check')
       resolve()
       return
