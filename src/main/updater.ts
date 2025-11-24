@@ -69,6 +69,12 @@ export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void
 
     autoUpdater.on('update-not-available', () => {
       console.log('[Updater] No updates available - proceeding to start server')
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-status', {
+          status: 'no-update',
+          message: 'No updates available'
+        })
+      }
       resolve()
     })
 
@@ -103,6 +109,21 @@ export function setupAutoUpdater(mainWindow: BrowserWindow | null): Promise<void
     autoUpdater.on('error', (err) => {
       console.error('[Updater] Error:', err, '- proceeding to start server anyway')
       currentUpdateStatus = null
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-status', {
+          status: 'error',
+          message: 'Update check failed, continuing...'
+        })
+        // Clear error status after 2 seconds
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-status', {
+              status: 'done',
+              message: 'Continuing to app...'
+            })
+          }
+        }, 2000)
+      }
       resolve() // Continue even if update check fails
     })
 

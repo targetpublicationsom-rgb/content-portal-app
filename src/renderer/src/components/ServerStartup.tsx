@@ -53,6 +53,10 @@ export default function ServerStartup({ onServerReady }: ServerStartupProps): Re
         ) {
           setShowUpdateOverlay(true)
         }
+        // Hide update overlay when done or no update
+        if (data.status === 'no-update' || data.status === 'done' || data.status === 'error') {
+          setShowUpdateOverlay(false)
+        }
       }
     )
 

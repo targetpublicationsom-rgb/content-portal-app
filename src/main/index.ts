@@ -759,15 +759,17 @@ app.whenReady().then(async () => {
   // Then create window
   createWindow()
 
-  // Check for updates immediately, before window loads
-  // Updates will be shown once window is ready
-  await setupAutoUpdater(mainWindow)
-
-  // Wait for window to be ready before starting server
+  // Wait for window to be ready, then check for updates, then start server
   mainWindow?.webContents.once('did-finish-load', async () => {
-    console.log('[Main] Window loaded, starting server...')
+    console.log('[Main] Window loaded')
 
-    // Start server after update check completes
+    // Check for updates first
+    console.log('[Main] Checking for updates...')
+    await setupAutoUpdater(mainWindow)
+    console.log('[Main] Update check complete')
+
+    // Then start server
+    console.log('[Main] Starting server...')
     try {
       await startPythonServer()
       console.log('[Main] Python server started successfully')
