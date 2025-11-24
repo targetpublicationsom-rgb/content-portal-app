@@ -23,11 +23,19 @@ let currentState: UpdateState = 'idle'
 let mainWindowRef: BrowserWindow | null = null
 let updateResolve: (() => void) | null = null
 let isUpdateDownloaded = false
+let checkTimeout: NodeJS.Timeout | null = null
 
 // State transition function
 function transitionTo(newState: UpdateState, status: UpdateStatus): void {
   console.log(`[Updater] State transition: ${currentState} → ${newState}`)
   currentState = newState
+
+  // Clear timeout when we start downloading (no longer just checking)
+  if (newState === 'downloading' && checkTimeout) {
+    console.log('[Updater] Download started - clearing check timeout')
+    clearTimeout(checkTimeout)
+    checkTimeout = null
+  }
 
   // Send status to renderer
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -161,30 +169,36 @@ async function checkForUpdates(): Promise<void> {
     updateResolve = resolve
 
     // Set timeout to force resolve only if stuck in checking phase
-    // Don't timeout during download - let it complete
-    const timeout = setTimeout(() => {
+    // This will be cleared when download starts
+    checkTimeout = setTimeout(() => {
       if (currentState === 'checking') {
         console.warn('[Updater] Update check timeout - no update found, proceeding')
         if (updateResolve) {
           const resolve = updateResolve
           updateResolve = null
+          checkTimeout = null
           resolve()
         }
       }
-      // If downloading, don't timeout - let download complete
     }, 30000) // 30 second timeout for checking only
 
     // Clear timeout when resolved
     const originalResolve = updateResolve
     updateResolve = () => {
-      clearTimeout(timeout)
+      if (checkTimeout) {
+        clearTimeout(checkTimeout)
+        checkTimeout = null
+      }
       if (originalResolve) originalResolve()
     }
 
     // Start checking
     autoUpdater.checkForUpdates().catch((err) => {
       console.error('[Updater] Failed to check for updates:', err)
-      clearTimeout(timeout)
+      if (checkTimeout) {
+        clearTimeout(checkTimeout)
+        checkTimeout = null
+      }
       transitionTo('error', {
         state: 'error',
         message: 'Failed to check for updates',
