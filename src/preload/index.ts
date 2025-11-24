@@ -44,7 +44,53 @@ const api = {
     ipcRenderer.invoke('read-log-file', filePath),
 
   // Get app version
-  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version')
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+
+  // File Watcher APIs
+  startFileWatcher: (folderPath: string): Promise<{ success: boolean; message: string }> =>
+    ipcRenderer.invoke('start-file-watcher', folderPath),
+
+  stopFileWatcher: (): Promise<{ success: boolean; message: string }> =>
+    ipcRenderer.invoke('stop-file-watcher'),
+
+  getWatcherStatus: (): Promise<{
+    isWatching: boolean
+    watchPath: string | null
+    eventCount: number
+  }> => ipcRenderer.invoke('get-watcher-status'),
+
+  getRecentEvents: (
+    limit?: number
+  ): Promise<
+    Array<{
+      type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'
+      path: string
+      filename: string
+      timestamp: string
+    }>
+  > => ipcRenderer.invoke('get-recent-events', limit),
+
+  clearWatcherEvents: (): Promise<void> => ipcRenderer.invoke('clear-watcher-events'),
+
+  onFileWatcherEvent: (
+    callback: (
+      event: any,
+      data: {
+        type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'
+        path: string
+        filename: string
+        timestamp: string
+      }
+    ) => void
+  ) => {
+    ipcRenderer.on('file-watcher-event', callback)
+    return () => ipcRenderer.removeListener('file-watcher-event', callback)
+  },
+
+  onFileWatcherError: (callback: (event: any, message: string) => void) => {
+    ipcRenderer.on('file-watcher-error', callback)
+    return () => ipcRenderer.removeListener('file-watcher-error', callback)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

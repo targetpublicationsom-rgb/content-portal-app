@@ -3,6 +3,7 @@ import Layout from './layouts/Layout'
 import Dashboard from './components/Dashboard'
 import Jobs from './components/Jobs'
 import JobDetails from './components/JobDetails'
+import FileWatcher from './components/FileWatcher'
 
 // Use HashRouter for better Electron compatibility
 export const router = createHashRouter([
@@ -17,6 +18,10 @@ export const router = createHashRouter([
       {
         path: '/jobs',
         element: <Jobs />
+      },
+      {
+        path: '/file-watcher',
+        element: <FileWatcher />
       }
     ]
   },

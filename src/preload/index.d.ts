@@ -4,6 +4,13 @@ interface ServerInfo {
   port: number
 }
 
+interface FileChangeEvent {
+  type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'
+  path: string
+  filename: string
+  timestamp: string
+}
+
 interface API {
   getServerInfoPath: () => Promise<string>
   getServerInfo: () => Promise<ServerInfo | null>
@@ -40,6 +47,17 @@ interface API {
       }
     ) => void
   ) => () => void
+  startFileWatcher: (folderPath: string) => Promise<{ success: boolean; message: string }>
+  stopFileWatcher: () => Promise<{ success: boolean; message: string }>
+  getWatcherStatus: () => Promise<{
+    isWatching: boolean
+    watchPath: string | null
+    eventCount: number
+  }>
+  getRecentEvents: (limit?: number) => Promise<FileChangeEvent[]>
+  clearWatcherEvents: () => Promise<void>
+  onFileWatcherEvent: (callback: (event: any, data: FileChangeEvent) => void) => () => void
+  onFileWatcherError: (callback: (event: any, message: string) => void) => () => void
 }
 
 declare global {

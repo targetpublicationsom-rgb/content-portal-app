@@ -8,6 +8,14 @@ import { pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
 import { setupAutoUpdater } from './updater'
+import {
+  initFileWatcher,
+  startWatching,
+  stopWatching,
+  getWatcherStatus,
+  getRecentEvents,
+  clearEvents
+} from './fileWatcher'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -336,6 +344,12 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    // Initialize file watcher
+    if (mainWindow) {
+      initFileWatcher(mainWindow)
+      console.log('[Main] File watcher initialized')
+    }
+
     // Check if app should start minimized (can be configured later)
     const startMinimized =
       process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
@@ -819,3 +833,10 @@ ipcMain.handle('is-server-running', () => serverRunning)
 ipcMain.handle('is-server-starting', () => serverStarting)
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
+
+// File Watcher IPC handlers
+ipcMain.handle('start-file-watcher', (_, folderPath: string) => startWatching(folderPath))
+ipcMain.handle('stop-file-watcher', () => stopWatching())
+ipcMain.handle('get-watcher-status', () => getWatcherStatus())
+ipcMain.handle('get-recent-events', (_, limit?: number) => getRecentEvents(limit))
+ipcMain.handle('clear-watcher-events', () => clearEvents())
