@@ -1,0 +1,58 @@
+// Shared QC types for both main and renderer processes
+
+export type QCStatus =
+  | 'QUEUED'
+  | 'CONVERTING'
+  | 'SUBMITTING'
+  | 'PROCESSING'
+  | 'DOWNLOADING'
+  | 'CONVERTING_REPORT'
+  | 'COMPLETED'
+  | 'FAILED'
+
+export interface QCRecord {
+  qc_id: string
+  file_path: string
+  original_name: string
+  pdf_path: string | null
+  status: QCStatus
+  submitted_at: string
+  completed_at: string | null
+  report_md_path: string | null
+  report_docx_path: string | null
+  qc_score: number | null
+  issues_found: number | null
+  external_qc_id: string | null
+  error_message: string | null
+  retry_count: number
+}
+
+export interface QCConfig {
+  watchFolders: string[]
+  outputFolder: string
+  apiUrl: string
+  apiKey: string
+  pollingInterval: number
+  autoSubmit: boolean
+  maxRetries: number
+}
+
+export interface QCStats {
+  total: number
+  queued: number
+  converting: number
+  processing: number
+  completed: number
+  failed: number
+  todayCompleted: number
+  avgScore: number
+  avgProcessingTime: number
+}
+
+export interface QCFilters {
+  status?: QCStatus
+  dateFrom?: string
+  dateTo?: string
+  minScore?: number
+  maxScore?: number
+}

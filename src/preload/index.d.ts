@@ -58,6 +58,31 @@ interface API {
   clearWatcherEvents: () => Promise<void>
   onFileWatcherEvent: (callback: (event: any, data: FileChangeEvent) => void) => () => void
   onFileWatcherError: (callback: (event: any, message: string) => void) => () => void
+  qc: {
+    getRecords: (filters?: any, limit?: number, offset?: number) => Promise<any>
+    getRecord: (qcId: string) => Promise<any>
+    getStats: () => Promise<any>
+    getConfig: () => Promise<any>
+    updateConfig: (updates: any) => Promise<any>
+    addWatchFolder: (folder: string) => Promise<any>
+    removeWatchFolder: (folder: string) => Promise<any>
+    testConnection: () => Promise<any>
+    getWatcherStatus: () => Promise<any>
+    startWatcher: () => Promise<any>
+    stopWatcher: () => Promise<any>
+    deleteRecord: (qcId: string) => Promise<any>
+    deleteAllRecords: () => Promise<any>
+    onFileDetected: (callback: (event: any, data: any) => void) => () => void
+    onStatusUpdate: (callback: (event: any, data: any) => void) => () => void
+    onQueueUpdate: (callback: (event: any, data: any) => void) => () => void
+    onError: (callback: (event: any, data: any) => void) => () => void
+  }
+  shell: {
+    openPath: (path: string) => Promise<string>
+  }
+  dialog: {
+    showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths: string[] }>
+  }
 }
 
 declare global {

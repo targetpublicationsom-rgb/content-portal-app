@@ -6,7 +6,8 @@ import {
   shell,
   nativeImage,
   ipcMain,
-  globalShortcut
+  globalShortcut,
+  dialog
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -34,6 +35,8 @@ import {
   getRecentEvents,
   clearEvents
 } from './fileWatcher'
+import { initializeQCOrchestrator, shutdownQCOrchestrator } from './qc/qcOrchestrator'
+import { registerQCIpcHandlers, unregisterQCIpcHandlers } from './qc/qcIpcHandlers'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -123,6 +126,10 @@ function createWindow(): void {
     if (mainWindow) {
       initFileWatcher(mainWindow)
       console.log('[Main] File watcher initialized')
+
+      // Register QC IPC handlers
+      registerQCIpcHandlers()
+      console.log('[Main] QC IPC handlers registered')
     }
 
     // Check if app should start minimized (can be configured later)
@@ -568,6 +575,15 @@ app.whenReady().then(async () => {
       console.error('[Main] Step 2: Update check failed:', err)
     }
 
+    // Step 2.5: Initialize QC orchestrator
+    try {
+      console.log('[Main] Step 2.5: Initializing QC orchestrator...')
+      await initializeQCOrchestrator(mainWindow!)
+      console.log('[Main] Step 2.5: QC orchestrator initialized')
+    } catch (err) {
+      console.error('[Main] Step 2.5: QC orchestrator initialization failed:', err)
+    }
+
     // Step 3: Start server (with built-in retry logic)
     console.log('[Main] Step 3: Starting server...')
     try {
@@ -597,6 +613,16 @@ app.on('before-quit', async (event) => {
   event.preventDefault()
   console.log('[Main] Stopping server before quit...')
   setQuitting(true)
+
+  // Shutdown QC orchestrator
+  try {
+    console.log('[Main] Shutting down QC orchestrator...')
+    await shutdownQCOrchestrator()
+    console.log('[Main] QC orchestrator shutdown complete')
+  } catch (err) {
+    console.error('[Main] QC orchestrator shutdown failed:', err)
+  }
+
   await stopServer()
 
   // Clean up tray
@@ -615,6 +641,9 @@ app.on('will-quit', async () => {
 
   // Unregister all shortcuts
   globalShortcut.unregisterAll()
+
+  // Unregister QC IPC handlers
+  unregisterQCIpcHandlers()
 
   // Ensure server is stopped
   setQuitting(true)
@@ -661,3 +690,15 @@ ipcMain.handle('stop-file-watcher', () => stopWatching())
 ipcMain.handle('get-watcher-status', () => getWatcherStatus())
 ipcMain.handle('get-recent-events', (_, limit?: number) => getRecentEvents(limit))
 ipcMain.handle('clear-watcher-events', () => clearEvents())
+
+// Shell and dialog IPC handlers
+ipcMain.handle('shell:open-path', async (_, path: string) => {
+  return await shell.openPath(path)
+})
+
+ipcMain.handle('dialog:show-open-dialog', async (_, options: Electron.OpenDialogOptions) => {
+  if (mainWindow) {
+    return await dialog.showOpenDialog(mainWindow, options)
+  }
+  return { canceled: true, filePaths: [] }
+})

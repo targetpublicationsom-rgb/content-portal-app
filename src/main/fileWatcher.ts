@@ -126,10 +126,11 @@ export function startWatching(folderPath: string): { success: boolean; message: 
     })
 
     // Error handling
-    watcher.on('error', (error: Error) => {
+    watcher.on('error', (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : String(error)
       console.error('[FileWatcher] Error:', error)
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('file-watcher-error', error.message)
+        mainWindow.webContents.send('file-watcher-error', errorMessage)
       }
     })
 

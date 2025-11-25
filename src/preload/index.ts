@@ -90,6 +90,57 @@ const api = {
   onFileWatcherError: (callback: (event: any, message: string) => void) => {
     ipcRenderer.on('file-watcher-error', callback)
     return () => ipcRenderer.removeListener('file-watcher-error', callback)
+  },
+
+  // QC Module APIs
+  qc: {
+    getRecords: (filters?: any, limit?: number, offset?: number) =>
+      ipcRenderer.invoke('qc:get-records', filters, limit, offset),
+    getRecord: (qcId: string) => ipcRenderer.invoke('qc:get-record', qcId),
+    getStats: () => ipcRenderer.invoke('qc:get-stats'),
+    getConfig: () => ipcRenderer.invoke('qc:get-config'),
+    updateConfig: (updates: any) => ipcRenderer.invoke('qc:update-config', updates),
+    testConnection: () => ipcRenderer.invoke('qc:test-connection'),
+    addWatchFolder: (folderPath: string) => ipcRenderer.invoke('qc:add-watch-folder', folderPath),
+    removeWatchFolder: (folderPath: string) =>
+      ipcRenderer.invoke('qc:remove-watch-folder', folderPath),
+    startWatcher: () => ipcRenderer.invoke('qc:start-watcher'),
+    stopWatcher: () => ipcRenderer.invoke('qc:stop-watcher'),
+    isWatcherActive: () => ipcRenderer.invoke('qc:is-watcher-active'),
+    deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
+    deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
+    getConfig: () => ipcRenderer.invoke('qc:get-config'),
+    updateConfig: (updates: any) => ipcRenderer.invoke('qc:update-config', updates),
+    addWatchFolder: (folder: string) => ipcRenderer.invoke('qc:add-watch-folder', folder),
+    removeWatchFolder: (folder: string) => ipcRenderer.invoke('qc:remove-watch-folder', folder),
+    testConnection: () => ipcRenderer.invoke('qc:test-connection'),
+    getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
+    startWatcher: () => ipcRenderer.invoke('qc:start-watcher'),
+    stopWatcher: () => ipcRenderer.invoke('qc:stop-watcher'),
+    onFileDetected: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:file-detected', callback)
+      return () => ipcRenderer.removeListener('qc:file-detected', callback)
+    },
+    onStatusUpdate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:status-update', callback)
+      return () => ipcRenderer.removeListener('qc:status-update', callback)
+    },
+    onQueueUpdate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:queue-update', callback)
+      return () => ipcRenderer.removeListener('qc:queue-update', callback)
+    },
+    onError: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:error', callback)
+      return () => ipcRenderer.removeListener('qc:error', callback)
+    }
+  },
+
+  // Shell and Dialog APIs
+  shell: {
+    openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path)
+  },
+  dialog: {
+    showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:show-open-dialog', options)
   }
 }
 
