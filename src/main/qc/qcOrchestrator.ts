@@ -180,7 +180,7 @@ class QCOrchestrator extends EventEmitter {
         if (['QUEUED', 'CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
           const timeSinceSubmit =
             new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
-          // If stuck for more than 10 minutes, allow reprocessing
+          // If stuck for more than 10 minutes, mark as FAILED
           if (timeSinceSubmit < 10 * 60 * 1000) {
             console.log(
               `[QCOrchestrator] Skipping - already ${existingRecord.status} by ${existingRecord.processed_by}: ${filename}`
@@ -188,8 +188,10 @@ class QCOrchestrator extends EventEmitter {
             return
           } else {
             console.log(
-              `[QCOrchestrator] Reprocessing stuck file (${existingRecord.status} for ${Math.round(timeSinceSubmit / 1000 / 60)} min): ${filename}`
+              `[QCOrchestrator] Marking stuck file as FAILED (${existingRecord.status} for ${Math.round(timeSinceSubmit / 1000 / 60)} min): ${filename}`
             )
+            updateQCStatus(existingRecord.qc_id, 'FAILED', `Stuck in ${existingRecord.status} state for more than 10 minutes`)
+            return
           }
         }
         
