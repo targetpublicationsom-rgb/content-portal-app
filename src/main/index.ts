@@ -27,14 +27,6 @@ import {
   isServerStarting,
   getServerPort
 } from './serverManager'
-import {
-  initFileWatcher,
-  startWatching,
-  stopWatching,
-  getWatcherStatus,
-  getRecentEvents,
-  clearEvents
-} from './fileWatcher'
 import { initializeQCOrchestrator, shutdownQCOrchestrator } from './qc/qcOrchestrator'
 import { registerQCIpcHandlers, unregisterQCIpcHandlers } from './qc/qcIpcHandlers'
 
@@ -122,12 +114,8 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    // Initialize file watcher
+    // Register QC IPC handlers
     if (mainWindow) {
-      initFileWatcher(mainWindow)
-      console.log('[Main] File watcher initialized')
-
-      // Register QC IPC handlers
       registerQCIpcHandlers()
       console.log('[Main] QC IPC handlers registered')
     }
@@ -683,13 +671,6 @@ ipcMain.handle('is-server-running', () => isServerRunning())
 ipcMain.handle('is-server-starting', () => isServerStarting())
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
-
-// File Watcher IPC handlers
-ipcMain.handle('start-file-watcher', (_, folderPath: string) => startWatching(folderPath))
-ipcMain.handle('stop-file-watcher', () => stopWatching())
-ipcMain.handle('get-watcher-status', () => getWatcherStatus())
-ipcMain.handle('get-recent-events', (_, limit?: number) => getRecentEvents(limit))
-ipcMain.handle('clear-watcher-events', () => clearEvents())
 
 // Shell and dialog IPC handlers
 ipcMain.handle('shell:open-path', async (_, path: string) => {

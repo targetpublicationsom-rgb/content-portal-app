@@ -3,7 +3,6 @@ import Layout from './layouts/Layout'
 import Dashboard from './components/Dashboard'
 import Jobs from './components/Jobs'
 import JobDetails from './components/JobDetails'
-import FileWatcher from './components/FileWatcher'
 import QCDashboard from './components/qc/QCDashboard'
 import QCFileList from './components/qc/QCFileList'
 
@@ -20,10 +19,6 @@ export const router = createHashRouter([
       {
         path: '/jobs',
         element: <Jobs />
-      },
-      {
-        path: '/file-watcher',
-        element: <FileWatcher />
       },
       {
         path: '/qc',

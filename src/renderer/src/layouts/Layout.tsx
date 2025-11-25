@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, Eye, FileCheck } from 'lucide-react'
+import { LayoutDashboard, Briefcase, FileCheck } from 'lucide-react'
 import StatusBar from '../components/StatusBar'
 
 export default function Layout(): React.JSX.Element {
@@ -8,8 +8,7 @@ export default function Layout(): React.JSX.Element {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/jobs', label: 'Jobs', icon: Briefcase },
-    { path: '/file-watcher', label: 'File Watcher', icon: Eye },
-    { path: '/qc', label: 'Quality Check', icon: FileCheck }
+    { path: '/qc', label: 'QC', icon: FileCheck }
   ]
 
   return (
