@@ -5,7 +5,7 @@ import { getWordConverter, initializeWordConverter, shutdownWordConverter } from
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
 import { getQCExternalService, configureQCExternalService } from './qcExternalService'
 import { convertMdToDocx, initializePandoc, isPandocAvailable } from './pandocConverter'
-import { initializeQCConfig, getConfig, updateConfig, getQCOutputPaths } from './qcConfig'
+import { initializeQCConfig, getConfig, getQCOutputPaths, getLockBasePath } from './qcConfig'
 import {
   initializeQCDatabase,
   createQCRecord,
@@ -16,7 +16,8 @@ import {
   incrementRetryCount,
   getProcessingRecords,
   getRecordByFilePath,
-  closeQCDatabase
+  closeQCDatabase,
+  reinitializeQCDatabase
 } from './qcStateManager'
 import {
   initializeQCNotifications,
@@ -27,6 +28,12 @@ import {
   notifyQCFailed,
   notifyServiceOffline
 } from './qcNotifications'
+import {
+  acquireLock,
+  releaseLock,
+  checkLock,
+  cleanStaleLocks
+} from './qcLockManager'
 import type { WatchEvent } from './qcWatcher'
 import type { QCRecord } from '../../shared/qc.types'
 
@@ -45,9 +52,11 @@ class QCOrchestrator extends EventEmitter {
     console.log('[QCOrchestrator] Initializing...')
 
     try {
+      // Initialize config FIRST (needed for database path)
+      initializeQCConfig()
+      
       // Initialize all modules
       initializeQCDatabase()
-      initializeQCConfig()
       initializePandoc()
       initializeQCNotifications(mainWindow)
       await initializeWordConverter()
@@ -139,24 +148,75 @@ class QCOrchestrator extends EventEmitter {
 
   private async processNewFile(filePath: string, filename: string): Promise<void> {
     let recordId: string | null = null
+    const lockBasePath = getLockBasePath()
 
     try {
-      // Check if this file was already processed recently (skip if within 5 minutes)
+      // Clean stale locks first
+      cleanStaleLocks(lockBasePath)
+
+      // Check if file is currently locked by another user
+      const existingLock = checkLock(lockBasePath, filePath)
+      if (existingLock) {
+        console.log(
+          `[QCOrchestrator] File is locked by ${existingLock.processedBy}: ${filename}`
+        )
+        return
+      }
+
+      // Check if this file was already processed or is currently being processed
       const existingRecord = getRecordByFilePath(filePath)
       if (existingRecord) {
-        const timeSinceSubmit =
-          new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
-        if (timeSinceSubmit < 5 * 60 * 1000) {
+        // Skip if completed within last 5 minutes (avoid immediate reprocessing)
+        if (existingRecord.status === 'COMPLETED') {
+          const timeSinceCompletion =
+            new Date().getTime() - new Date(existingRecord.completed_at || existingRecord.submitted_at).getTime()
+          if (timeSinceCompletion < 5 * 60 * 1000) {
+            console.log(
+              `[QCOrchestrator] Skipping - already completed ${Math.round(timeSinceCompletion / 1000)}s ago by ${existingRecord.processed_by}: ${filename}`
+            )
+            return
+          }
+        }
+        
+        // Skip if currently being processed (not FAILED or old)
+        if (['QUEUED', 'CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
+          const timeSinceSubmit =
+            new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
+          // If stuck for more than 10 minutes, allow reprocessing
+          if (timeSinceSubmit < 10 * 60 * 1000) {
+            console.log(
+              `[QCOrchestrator] Skipping - already ${existingRecord.status} by ${existingRecord.processed_by}: ${filename}`
+            )
+            return
+          } else {
+            console.log(
+              `[QCOrchestrator] Reprocessing stuck file (${existingRecord.status} for ${Math.round(timeSinceSubmit / 1000 / 60)} min): ${filename}`
+            )
+          }
+        }
+        
+        // Allow reprocessing if FAILED (no time check)
+        if (existingRecord.status === 'FAILED') {
           console.log(
-            `[QCOrchestrator] Skipping duplicate (processed ${Math.round(timeSinceSubmit / 1000)}s ago): ${filename}`
+            `[QCOrchestrator] Retrying failed file: ${filename}`
           )
-          return
         }
       }
 
       // Create QC record
       const record = createQCRecord(filePath)
       recordId = record.qc_id
+
+      // Acquire lock before processing
+      const lockResult = acquireLock(lockBasePath, record.qc_id, filePath)
+      if (!lockResult.success) {
+        console.log(
+          `[QCOrchestrator] Could not acquire lock for ${filename}: ${lockResult.error || 'locked by ' + lockResult.lockedBy}`
+        )
+        updateQCStatus(record.qc_id, 'FAILED', lockResult.error || 'File is locked')
+        return
+      }
+
       notifyQCStarted(filename)
       this.emitToRenderer('qc:file-detected', { record })
 
@@ -173,9 +233,15 @@ class QCOrchestrator extends EventEmitter {
 
       // Step 2: Submit to external API
       await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
+
+      // Release lock after successful processing
+      releaseLock(lockBasePath, filePath)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QCOrchestrator] Failed to process file ${filename}:`, error)
+
+      // Release lock on error
+      releaseLock(lockBasePath, filePath)
 
       // Use the existing record ID, don't create a new one
       if (recordId) {
@@ -356,17 +422,22 @@ class QCOrchestrator extends EventEmitter {
 
   async reconfigureExternalService(apiUrl: string, apiKey: string): Promise<void> {
     configureQCExternalService(apiUrl, apiKey)
-    updateConfig({ apiUrl, apiKey })
-    console.log('[QCOrchestrator] External service reconfigured')
+    console.log('[QCOrchestrator] External service reconfigured (API settings from .env)')
   }
 
-  async restartWatcher(folders: string[]): Promise<void> {
+  async restartWatcher(): Promise<void> {
     stopQCWatcher()
-    updateConfig({ watchFolders: folders })
+    
+    // Reload config from .env file
+    initializeQCConfig()
+    
+    // Reinitialize database in case path changed
+    reinitializeQCDatabase()
 
-    if (folders.length > 0) {
-      startQCWatcher(folders)
-      console.log('[QCOrchestrator] Watcher restarted with new folders')
+    const config = getConfig()
+    if (config.watchFolders.length > 0) {
+      startQCWatcher(config.watchFolders)
+      console.log('[QCOrchestrator] Watcher restarted with folders from .env')
     }
   }
 }

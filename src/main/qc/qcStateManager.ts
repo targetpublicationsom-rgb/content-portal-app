@@ -1,27 +1,30 @@
-import { app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
+import * as os from 'os'
 import Database from 'better-sqlite3'
 import type { QCRecord, QCStatus, QCStats, QCFilters } from '../../shared/qc.types'
 import { v4 as uuidv4 } from 'uuid'
+import { getDatabasePath } from './qcConfig'
 
 let db: Database.Database | null = null
 
 // Initialize SQLite database
 export function initializeQCDatabase(): void {
-  const userDataPath = app.getPath('userData')
-  const qcDir = path.join(userDataPath, 'qc')
+  const dbPath = getDatabasePath()
+  const dbDir = path.dirname(dbPath)
 
-  // Create QC directory if it doesn't exist
-  if (!fs.existsSync(qcDir)) {
-    fs.mkdirSync(qcDir, { recursive: true })
+  // Create database directory if it doesn't exist
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true })
   }
 
-  const dbPath = path.join(qcDir, 'qc.db')
   console.log(`[QCStateManager] Initializing database at: ${dbPath}`)
 
   db = new Database(dbPath)
-  db.pragma('journal_mode = WAL') // Better concurrent performance
+  // Use DELETE mode instead of WAL for better network drive compatibility
+  db.pragma('journal_mode = DELETE')
+  // Set busy timeout for concurrent access
+  db.pragma('busy_timeout = 5000')
 
   // Create tables
   const createTableSQL = `
@@ -39,7 +42,8 @@ export function initializeQCDatabase(): void {
       issues_found INTEGER,
       external_qc_id TEXT,
       error_message TEXT,
-      retry_count INTEGER DEFAULT 0
+      retry_count INTEGER DEFAULT 0,
+      processed_by TEXT
     )
   `
 
@@ -49,6 +53,7 @@ export function initializeQCDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_status ON qc_records(status)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_submitted_at ON qc_records(submitted_at)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_external_qc_id ON qc_records(external_qc_id)')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_file_path ON qc_records(file_path)')
 
   console.log('[QCStateManager] Database initialized')
 }
@@ -56,6 +61,10 @@ export function initializeQCDatabase(): void {
 // Create a new QC record
 export function createQCRecord(filePath: string): QCRecord {
   if (!db) throw new Error('Database not initialized')
+
+  const username = os.userInfo().username
+  const hostname = os.hostname()
+  const processedBy = `${username}@${hostname}`
 
   const record: QCRecord = {
     qc_id: uuidv4(),
@@ -71,15 +80,16 @@ export function createQCRecord(filePath: string): QCRecord {
     issues_found: null,
     external_qc_id: null,
     error_message: null,
-    retry_count: 0
+    retry_count: 0,
+    processed_by: processedBy
   }
 
   const stmt = db.prepare(`
     INSERT INTO qc_records (
       qc_id, file_path, original_name, pdf_path, status, submitted_at,
       completed_at, report_md_path, report_docx_path, qc_score, issues_found,
-      external_qc_id, error_message, retry_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      external_qc_id, error_message, retry_count, processed_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   stmt.run(
@@ -96,7 +106,8 @@ export function createQCRecord(filePath: string): QCRecord {
     record.issues_found,
     record.external_qc_id,
     record.error_message,
-    record.retry_count
+    record.retry_count,
+    record.processed_by
   )
 
   console.log(`[QCStateManager] Created record: ${record.qc_id} for ${record.original_name}`)
@@ -338,4 +349,11 @@ export function closeQCDatabase(): void {
     db = null
     console.log('[QCStateManager] Database closed')
   }
+}
+
+// Reinitialize database (used when database path changes)
+export function reinitializeQCDatabase(): void {
+  console.log('[QCStateManager] Reinitializing database...')
+  closeQCDatabase()
+  initializeQCDatabase()
 }

@@ -7,7 +7,7 @@ import {
   deleteQCRecord,
   deleteAllQCRecords
 } from './qcStateManager'
-import { getConfig, updateConfig, addWatchFolder, removeWatchFolder } from './qcConfig'
+import { getConfig } from './qcConfig'
 import { testConnection } from './qcExternalService'
 import { getQCWatcher, isQCWatcherActive } from './qcWatcher'
 import type { QCFilters } from '../../shared/qc.types'
@@ -63,54 +63,6 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('qc:update-config', async (_event, updates: Partial<ReturnType<typeof getConfig>>) => {
-    try {
-      updateConfig(updates)
-
-      if (updates.apiUrl || updates.apiKey) {
-        const config = getConfig()
-        const orchestrator = getQCOrchestrator()
-        await orchestrator.reconfigureExternalService(config.apiUrl, config.apiKey)
-      }
-
-      return { success: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update configuration'
-      console.error('[QC IPC] Error updating config:', error)
-      return { success: false, error: message }
-    }
-  })
-
-  ipcMain.handle('qc:add-watch-folder', async (_event, folder: string) => {
-    try {
-      addWatchFolder(folder)
-      const config = getConfig()
-      const orchestrator = getQCOrchestrator()
-      await orchestrator.restartWatcher(config.watchFolders)
-
-      return { success: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to add watch folder'
-      console.error('[QC IPC] Error adding watch folder:', error)
-      return { success: false, error: message }
-    }
-  })
-
-  ipcMain.handle('qc:remove-watch-folder', async (_event, folder: string) => {
-    try {
-      removeWatchFolder(folder)
-      const config = getConfig()
-      const orchestrator = getQCOrchestrator()
-      await orchestrator.restartWatcher(config.watchFolders)
-
-      return { success: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to remove watch folder'
-      console.error('[QC IPC] Error removing watch folder:', error)
-      return { success: false, error: message }
-    }
-  })
-
   ipcMain.handle('qc:test-connection', async () => {
     try {
       const result = await testConnection()
@@ -140,11 +92,11 @@ export function registerQCIpcHandlers(): void {
     try {
       const config = getConfig()
       if (config.watchFolders.length === 0) {
-        return { success: false, error: 'No watch folders configured' }
+        return { success: false, error: 'No watch folders configured in .env (VITE_QC_WATCH_FOLDER)' }
       }
 
       const orchestrator = getQCOrchestrator()
-      await orchestrator.restartWatcher(config.watchFolders)
+      await orchestrator.restartWatcher()
 
       return { success: true }
     } catch (error) {
@@ -156,8 +108,8 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:stop-watcher', async () => {
     try {
-      const orchestrator = getQCOrchestrator()
-      await orchestrator.restartWatcher([])
+      const { stopQCWatcher } = await import('./qcWatcher')
+      stopQCWatcher()
 
       return { success: true }
     } catch (error) {
@@ -200,9 +152,6 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:get-record')
   ipcMain.removeHandler('qc:get-stats')
   ipcMain.removeHandler('qc:get-config')
-  ipcMain.removeHandler('qc:update-config')
-  ipcMain.removeHandler('qc:add-watch-folder')
-  ipcMain.removeHandler('qc:remove-watch-folder')
   ipcMain.removeHandler('qc:test-connection')
   ipcMain.removeHandler('qc:get-watcher-status')
   ipcMain.removeHandler('qc:start-watcher')

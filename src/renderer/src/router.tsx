@@ -6,7 +6,6 @@ import JobDetails from './components/JobDetails'
 import FileWatcher from './components/FileWatcher'
 import QCDashboard from './components/qc/QCDashboard'
 import QCFileList from './components/qc/QCFileList'
-import QCSettings from './components/qc/QCSettings'
 
 // Use HashRouter for better Electron compatibility
 export const router = createHashRouter([
@@ -33,10 +32,6 @@ export const router = createHashRouter([
       {
         path: '/qc/files',
         element: <QCFileList />
-      },
-      {
-        path: '/qc/settings',
-        element: <QCSettings />
       }
     ]
   },

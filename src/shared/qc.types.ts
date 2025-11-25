@@ -25,11 +25,12 @@ export interface QCRecord {
   external_qc_id: string | null
   error_message: string | null
   retry_count: number
+  processed_by: string | null
 }
 
 export interface QCConfig {
   watchFolders: string[]
-  outputFolder: string
+  databasePath: string
   apiUrl: string
   apiKey: string
   pollingInterval: number

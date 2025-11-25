@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
-import { FileCheck, FileWarning, Clock, CheckCircle2, Loader2 } from 'lucide-react'
+import { Button } from '../ui/button'
+import { FileCheck, FileWarning, Clock, CheckCircle2, Loader2, Play, Square } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCStats } from '../../types/qc.types'
 
@@ -11,18 +12,49 @@ export default function QCDashboard(): React.JSX.Element {
   const [stats, setStats] = useState<QCStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [watcherActive, setWatcherActive] = useState(false)
+  const [watcherLoading, setWatcherLoading] = useState(false)
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
-    { path: '/qc/files', label: 'Files' },
-    { path: '/qc/settings', label: 'Settings' }
+    { path: '/qc/files', label: 'Files' }
   ]
 
   useEffect(() => {
     loadStats()
-    const interval = setInterval(loadStats, 5000)
+    loadWatcherStatus()
+    const interval = setInterval(() => {
+      loadStats()
+      loadWatcherStatus()
+    }, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  const loadWatcherStatus = async (): Promise<void> => {
+    try {
+      const status = await qcService.getWatcherStatus()
+      setWatcherActive(status.isActive)
+    } catch (err) {
+      console.error('Failed to load watcher status:', err)
+    }
+  }
+
+  const handleToggleWatcher = async (): Promise<void> => {
+    try {
+      setWatcherLoading(true)
+      if (watcherActive) {
+        await qcService.stopWatcher()
+      } else {
+        await qcService.startWatcher()
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      await loadWatcherStatus()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle watcher')
+    } finally {
+      setWatcherLoading(false)
+    }
+  }
 
   const loadStats = async (): Promise<void> => {
     try {
@@ -78,9 +110,40 @@ export default function QCDashboard(): React.JSX.Element {
         ))}
       </div>
 
-      <div>
-        <h1 className="text-3xl font-bold">Quality Check Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Monitor and manage document quality checks</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Quality Check Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Monitor automated document quality checks</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Status:</span>
+            <Badge
+              variant={watcherActive ? 'default' : 'secondary'}
+              className={watcherActive ? 'bg-green-500' : ''}
+            >
+              {watcherActive ? 'Watching' : 'Stopped'}
+            </Badge>
+          </div>
+          <Button
+            onClick={handleToggleWatcher}
+            disabled={watcherLoading}
+            variant={watcherActive ? 'destructive' : 'default'}
+            size="lg"
+          >
+            {watcherActive ? (
+              <>
+                <Square className="h-5 w-5 mr-2" />
+                Stop Watching
+              </>
+            ) : (
+              <>
+                <Play className="h-5 w-5 mr-2" />
+                Start Watching
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}

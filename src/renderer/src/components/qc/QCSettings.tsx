@@ -283,6 +283,36 @@ export default function QCSettings(): React.JSX.Element {
           <CardTitle>Advanced Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="databasePath">Database Location</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="databasePath"
+                value={config.databasePath}
+                readOnly
+                className="flex-1 font-mono text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const result = await window.api.dialog.showOpenDialog({
+                    properties: ['openDirectory']
+                  })
+                  if (!result.canceled && result.filePaths.length > 0) {
+                    const folder = result.filePaths[0]
+                    setConfig({ ...config, databasePath: `${folder}\\.qc\\qc.db` })
+                  }
+                }}
+              >
+                Browse
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              For network folders, set this to a shared location so all users can coordinate.
+              Default: Watch Folder\.qc\qc.db
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="pollingInterval">Polling Interval (ms)</Label>

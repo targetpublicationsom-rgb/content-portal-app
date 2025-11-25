@@ -16,8 +16,7 @@ export default function QCFileList(): React.JSX.Element {
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
-    { path: '/qc/files', label: 'Files' },
-    { path: '/qc/settings', label: 'Settings' }
+    { path: '/qc/files', label: 'Files' }
   ]
 
   useEffect(() => {
@@ -142,6 +141,7 @@ export default function QCFileList(): React.JSX.Element {
                 <TableHead>Status</TableHead>
                 <TableHead>Score</TableHead>
                 <TableHead>Issues</TableHead>
+                <TableHead>Processed By</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -149,7 +149,7 @@ export default function QCFileList(): React.JSX.Element {
             <TableBody>
               {records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No QC records found
                   </TableCell>
                 </TableRow>
@@ -177,6 +177,9 @@ export default function QCFileList(): React.JSX.Element {
                     </TableCell>
                     <TableCell>
                       {record.issues_found !== null ? record.issues_found : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">
+                      {record.processed_by || '—'}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(record.submitted_at)}
