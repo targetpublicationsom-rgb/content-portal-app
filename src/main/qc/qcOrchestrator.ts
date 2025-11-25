@@ -16,6 +16,8 @@ import {
   incrementRetryCount,
   getProcessingRecords,
   getRecordByFilePath,
+  getQCRecord,
+  updateQCRecord,
   closeQCDatabase,
   reinitializeQCDatabase
 } from './qcStateManager'
@@ -166,19 +168,15 @@ class QCOrchestrator extends EventEmitter {
       // Check if this file was already processed or is currently being processed
       const existingRecord = getRecordByFilePath(filePath)
       if (existingRecord) {
-        // Skip if completed within last 5 minutes (avoid immediate reprocessing)
+        // Never reprocess COMPLETED files automatically
         if (existingRecord.status === 'COMPLETED') {
-          const timeSinceCompletion =
-            new Date().getTime() - new Date(existingRecord.completed_at || existingRecord.submitted_at).getTime()
-          if (timeSinceCompletion < 5 * 60 * 1000) {
-            console.log(
-              `[QCOrchestrator] Skipping - already completed ${Math.round(timeSinceCompletion / 1000)}s ago by ${existingRecord.processed_by}: ${filename}`
-            )
-            return
-          }
+          console.log(
+            `[QCOrchestrator] Skipping - already completed by ${existingRecord.processed_by}: ${filename}`
+          )
+          return
         }
         
-        // Skip if currently being processed (not FAILED or old)
+        // Skip if currently being processed (not FAILED)
         if (['QUEUED', 'CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
           const timeSinceSubmit =
             new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
@@ -195,11 +193,12 @@ class QCOrchestrator extends EventEmitter {
           }
         }
         
-        // Allow reprocessing if FAILED (no time check)
+        // Skip FAILED files too - they need explicit retry via button
         if (existingRecord.status === 'FAILED') {
           console.log(
-            `[QCOrchestrator] Retrying failed file: ${filename}`
+            `[QCOrchestrator] Skipping failed file - use Retry button: ${filename}`
           )
+          return
         }
       }
 
@@ -439,6 +438,22 @@ class QCOrchestrator extends EventEmitter {
       startQCWatcher(config.watchFolders)
       console.log('[QCOrchestrator] Watcher restarted with folders from .env')
     }
+  }
+
+  async retryRecord(qcId: string): Promise<void> {
+    const record = getQCRecord(qcId)
+    if (!record) {
+      throw new Error('Record not found')
+    }
+
+    console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
+    
+    // Reset the record to QUEUED status
+    updateQCStatus(qcId, 'QUEUED')
+    updateQCRecord(qcId, { error_message: null, retry_count: 0 })
+    
+    // Process the file again
+    await this.processNewFile(record.file_path, record.original_name)
   }
 }
 

@@ -63,6 +63,7 @@ const api = {
     isWatcherActive: () => ipcRenderer.invoke('qc:is-watcher-active'),
     deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
     deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
+    retryRecord: (qcId: string) => ipcRenderer.invoke('qc:retry-record', qcId),
     getConfig: () => ipcRenderer.invoke('qc:get-config'),
     updateConfig: (updates: any) => ipcRenderer.invoke('qc:update-config', updates),
     addWatchFolder: (folder: string) => ipcRenderer.invoke('qc:add-watch-folder', folder),

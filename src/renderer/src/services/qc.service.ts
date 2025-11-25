@@ -102,6 +102,13 @@ export const qcService = {
     return response.data || 0
   },
 
+  async retryRecord(qcId: string): Promise<void> {
+    const response = (await window.api.qc.retryRecord(qcId)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to retry record')
+    }
+  },
+
   onFileDetected(callback: (data: any) => void): () => void {
     return window.api.qc.onFileDetected((_event, data) => callback(data))
   },

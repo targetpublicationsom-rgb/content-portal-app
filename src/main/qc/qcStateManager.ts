@@ -166,6 +166,22 @@ export function updateQCReport(
   console.log(`[QCStateManager] Updated ${qcId} with report data (score: ${qcScore})`)
 }
 
+// Update QC record with partial data
+export function updateQCRecord(qcId: string, updates: Partial<QCRecord>): void {
+  if (!db) throw new Error('Database not initialized')
+
+  const allowedFields = ['error_message', 'retry_count']
+  const fields = Object.keys(updates).filter(key => allowedFields.includes(key))
+  
+  if (fields.length === 0) return
+
+  const setClause = fields.map(field => `${field} = ?`).join(', ')
+  const values = fields.map(field => updates[field as keyof QCRecord])
+  
+  const stmt = db.prepare(`UPDATE qc_records SET ${setClause} WHERE qc_id = ?`)
+  stmt.run(...values, qcId)
+}
+
 // Increment retry count
 export function incrementRetryCount(qcId: string): number {
   if (!db) throw new Error('Database not initialized')

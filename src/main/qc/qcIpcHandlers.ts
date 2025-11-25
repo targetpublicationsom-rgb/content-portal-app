@@ -144,6 +144,18 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('qc:retry-record', async (_event, qcId: string) => {
+    try {
+      const orchestrator = getQCOrchestrator()
+      await orchestrator.retryRecord(qcId)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to retry record'
+      console.error('[QC IPC] Error retrying record:', error)
+      return { success: false, error: message }
+    }
+  })
+
   console.log('[QC IPC] Handlers registered')
 }
 
@@ -158,6 +170,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:stop-watcher')
   ipcMain.removeHandler('qc:delete-record')
   ipcMain.removeHandler('qc:delete-all-records')
+  ipcMain.removeHandler('qc:retry-record')
 
   console.log('[QC IPC] Handlers unregistered')
 }

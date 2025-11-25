@@ -72,6 +72,7 @@ interface API {
     stopWatcher: () => Promise<any>
     deleteRecord: (qcId: string) => Promise<any>
     deleteAllRecords: () => Promise<any>
+    retryRecord: (qcId: string) => Promise<any>
     onFileDetected: (callback: (event: any, data: any) => void) => () => void
     onStatusUpdate: (callback: (event: any, data: any) => void) => () => void
     onQueueUpdate: (callback: (event: any, data: any) => void) => () => void

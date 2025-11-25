@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
-import { FileText, Eye, RefreshCw } from 'lucide-react'
+import { FileText, Eye, RefreshCw, RotateCw } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCRecord, QCStatus } from '../../types/qc.types'
 
@@ -78,7 +78,17 @@ export default function QCFileList(): React.JSX.Element {
     return date.toLocaleString()
   }
 
-  const openReport = async (record: QCRecord): Promise<void> => {
+  const handleRetry = async (qcId: string) => {
+    try {
+      await qcService.retryRecord(qcId)
+      setTimeout(() => loadRecords(), 500)
+    } catch (err) {
+      console.error('Failed to retry record:', err)
+      setError('Failed to retry record')
+    }
+  }
+
+  const openReport = async (record: QCRecord) => {
     if (record.report_docx_path) {
       await window.api.shell.openPath(record.report_docx_path)
     } else if (record.report_md_path) {
@@ -186,6 +196,16 @@ export default function QCFileList(): React.JSX.Element {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
+                        {(record.status === 'FAILED' || record.status === 'COMPLETED') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRetry(record.qc_id)}
+                            title="Retry processing"
+                          >
+                            <RotateCw className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
