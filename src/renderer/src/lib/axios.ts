@@ -40,6 +40,9 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401 && !error.config._retry) {
       error.config._retry = true
+      // Clear both localStorage and encrypted token
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
       await window.api.clearAuthToken()
       window.location.hash = '/login'
     }

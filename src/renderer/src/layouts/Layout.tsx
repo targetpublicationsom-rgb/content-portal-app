@@ -1,12 +1,30 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Briefcase, LogOut } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui/button'
 import StatusBar from '../components/StatusBar'
+import api from '../lib/axios'
+import toast from 'react-hot-toast'
 
 export default function Layout(): React.JSX.Element {
   const location = useLocation()
-  const { logout, user } = useAuth()
+  
+  const userStr = localStorage.getItem('user')
+  const user = userStr ? JSON.parse(userStr) : null
+  
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await api.post('/auth/logout')
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Clear storage regardless of API response
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
+      await window.api.clearAuthToken()
+      toast.success('Logged out successfully')
+      window.location.hash = '/login'
+    }
+  }
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -45,7 +63,7 @@ export default function Layout(): React.JSX.Element {
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={logout}
+            onClick={handleLogout}
           >
             <LogOut className="h-4 w-4 mr-2" />
             Logout
