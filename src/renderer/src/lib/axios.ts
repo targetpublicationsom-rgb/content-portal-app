@@ -15,7 +15,11 @@ export const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     // Skip token for auth endpoints
-    if (config.url?.includes('/auth/login') || config.url?.includes('/auth/logout')) {
+    if (
+      config.url?.includes('/auth/login') ||
+      config.url?.includes('/auth/logout') ||
+      config.url?.includes('/generate-token')
+    ) {
       return config
     }
 

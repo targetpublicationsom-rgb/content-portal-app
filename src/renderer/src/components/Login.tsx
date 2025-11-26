@@ -37,7 +37,7 @@ export default function Login(): React.JSX.Element {
   const validateForm = (): boolean => {
     const emailError = validateEmail(email)
     const passwordError = validatePassword(password)
-    
+
     setErrors({
       email: emailError,
       password: passwordError
@@ -48,10 +48,10 @@ export default function Login(): React.JSX.Element {
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    
+
     // Clear previous errors
     setErrors({})
-    
+
     // Validate form
     if (!validateForm()) {
       return
@@ -60,20 +60,33 @@ export default function Login(): React.JSX.Element {
     setIsLoading(true)
 
     try {
-      const response = await api.post('/auth/login', { email, password })
-      const { token, user } = response.data
-      
-      // Store token and user in localStorage
-      localStorage.setItem('auth_token', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      
-      // Store encrypted token in main process
-      await window.api.storeAuthToken(token)
-      
+      // Step 1: Get token
+      const response = await api.post('/generate-token', { email, password })
+      const { authorization } = response.data.data
+
+      // Store token in localStorage and main process
+      localStorage.setItem('auth_token', authorization.token)
+      await window.api.storeAuthToken(authorization.token)
+
+      // Step 2: Fetch user data with the token
+      try {
+        const userResponse = await api.get('/me')
+        console.log('User data response:', userResponse.data)
+        if (userResponse?.data?.data) {
+          localStorage.setItem('user', JSON.stringify(userResponse?.data?.data))
+        }
+      } catch (userError) {
+        console.error('Failed to fetch user data:', userError)
+        // Continue to dashboard even if user fetch fails
+      }
+
       toast.success('Login successful')
       window.location.hash = '/'
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed'
+    } catch (error: any) {
+      let message = error instanceof Error ? error.message : 'Login failed'
+      if (error.response && error.response.status === 400) {
+        message = error.response.data.data
+      }
       toast.error(message)
     } finally {
       setIsLoading(false)
