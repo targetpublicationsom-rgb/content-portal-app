@@ -76,13 +76,11 @@ class QCExternalService {
       formData.append('file', fs.createReadStream(pdfPath))
       formData.append('filename', filename)
 
-      const response = await this.retryRequest(async () => {
-        return await this.client!.post<QCSubmitResponse>('/qc/submit', formData, {
-          headers: {
-            ...formData.getHeaders(),
-            Authorization: `Bearer ${this.apiKey}`
-          }
-        })
+      const response = await this.client.post<QCSubmitResponse>('/qc/submit', formData, {
+        headers: {
+          ...formData.getHeaders(),
+          Authorization: `Bearer ${this.apiKey}`
+        }
       })
 
       console.log(`[QCExternalService] Submitted successfully. QC ID: ${response.data.qc_id}`)
@@ -124,31 +122,6 @@ class QCExternalService {
     }
   }
 
-  private async retryRequest<T>(
-    requestFn: () => Promise<T>,
-    maxRetries = 3,
-    baseDelay = 2000
-  ): Promise<T> {
-    let lastError: Error | null = null
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await requestFn()
-      } catch (error) {
-        lastError = error as Error
-        console.warn(`[QCExternalService] Attempt ${attempt}/${maxRetries} failed:`, error)
-
-        if (attempt < maxRetries) {
-          const delay = baseDelay * Math.pow(2, attempt - 1) // Exponential backoff
-          console.log(`[QCExternalService] Retrying in ${delay}ms...`)
-          await this.sleep(delay)
-        }
-      }
-    }
-
-    throw lastError || new Error('Request failed after retries')
-  }
-
   private handleError(message: string, error: unknown): void {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError
@@ -164,10 +137,6 @@ class QCExternalService {
     } else {
       console.error(`${message}:`, error)
     }
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   isConfigured(): boolean {

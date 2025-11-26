@@ -13,7 +13,6 @@ import {
   updateQCPdfPath,
   updateQCExternalId,
   updateQCReport,
-  incrementRetryCount,
   getProcessingRecords,
   getRecordByFilePath,
   getQCRecord,
@@ -268,7 +267,6 @@ class QCOrchestrator extends EventEmitter {
     filename: string
   ): Promise<void> {
     const service = getQCExternalService()
-    const config = getConfig()
 
     if (!service.isConfigured()) {
       throw new Error('External QC service not configured')
@@ -277,28 +275,15 @@ class QCOrchestrator extends EventEmitter {
     updateQCStatus(qcId, 'SUBMITTING')
     this.emitToRenderer('qc:status-update', { qcId, status: 'SUBMITTING' })
 
-    try {
-      const response = await service.submitPdfForQC(pdfPath, filename)
-      updateQCExternalId(qcId, response.qc_id)
-      updateQCStatus(qcId, 'PROCESSING')
-      notifyQCSubmitted(filename)
-      this.emitToRenderer('qc:status-update', {
-        qcId,
-        status: 'PROCESSING',
-        externalQcId: response.qc_id
-      })
-    } catch (error) {
-      // Retry logic
-      const retryCount = incrementRetryCount(qcId)
-      if (retryCount < config.maxRetries) {
-        console.log(`[QCOrchestrator] Retrying submission (${retryCount}/${config.maxRetries})...`)
-        setTimeout(() => {
-          this.submitToExternalAPI(qcId, pdfPath, filename)
-        }, 5000)
-      } else {
-        throw error
-      }
-    }
+    const response = await service.submitPdfForQC(pdfPath, filename)
+    updateQCExternalId(qcId, response.qc_id)
+    updateQCStatus(qcId, 'PROCESSING')
+    notifyQCSubmitted(filename)
+    this.emitToRenderer('qc:status-update', {
+      qcId,
+      status: 'PROCESSING',
+      externalQcId: response.qc_id
+    })
   }
 
   private startStatusPolling(): void {
