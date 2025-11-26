@@ -7,17 +7,29 @@ let pandocPath: string | null = null
 
 // Initialize pandoc executable path
 export function initializePandoc(): void {
-  const userDataPath = app.getPath('userData')
-  const pandocDir = path.join(userDataPath, 'tools', 'pandoc')
-  pandocPath = path.join(pandocDir, 'pandoc.exe')
-
-  console.log(`[PandocConverter] Pandoc path: ${pandocPath}`)
-
-  // Check if pandoc exists
-  if (!fs.existsSync(pandocPath)) {
-    console.warn('[PandocConverter] Pandoc not found. Please bundle pandoc.exe in tools/')
-    pandocPath = 'pandoc' // Try system pandoc as fallback
+  // Try bundled pandoc in app resources first
+  const appPath = app.getAppPath()
+  const bundledPandocPath = path.join(appPath, 'tools', 'pandoc.exe')
+  
+  if (fs.existsSync(bundledPandocPath)) {
+    pandocPath = bundledPandocPath
+    console.log(`[PandocConverter] Using bundled pandoc: ${pandocPath}`)
+    return
   }
+
+  // Try user data directory (for production builds)
+  const userDataPath = app.getPath('userData')
+  const userDataPandocPath = path.join(userDataPath, 'tools', 'pandoc', 'pandoc.exe')
+  
+  if (fs.existsSync(userDataPandocPath)) {
+    pandocPath = userDataPandocPath
+    console.log(`[PandocConverter] Using user data pandoc: ${pandocPath}`)
+    return
+  }
+
+  // Fallback to system pandoc
+  console.warn('[PandocConverter] Pandoc not found in bundle or user data. Trying system pandoc...')
+  pandocPath = 'pandoc'
 }
 
 // Convert Markdown to DOCX using pandoc
