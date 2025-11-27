@@ -58,6 +58,27 @@ export const qcService = {
     return response.data!
   },
 
+  async updateConfig(config: Partial<QCConfig>): Promise<void> {
+    const response = (await window.api.qc.updateConfig(config)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to update QC configuration')
+    }
+  },
+
+  async addWatchFolder(folderPath: string): Promise<void> {
+    const response = (await window.api.qc.addWatchFolder(folderPath)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to add watch folder')
+    }
+  },
+
+  async removeWatchFolder(folderPath: string): Promise<void> {
+    const response = (await window.api.qc.removeWatchFolder(folderPath)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to remove watch folder')
+    }
+  },
+
   async testConnection(): Promise<{ success: boolean; data: any }> {
     return (await window.api.qc.testConnection()) as any
   },

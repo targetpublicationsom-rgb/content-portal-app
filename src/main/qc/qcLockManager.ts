@@ -1,4 +1,4 @@
-import * as fs from 'fs'
+import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 
@@ -22,10 +22,12 @@ export function getUserIdentifier(): string {
 }
 
 // Get lock directory path (in watch folder or custom location)
-function getLockDirectory(basePath: string): string {
+async function getLockDirectory(basePath: string): Promise<string> {
   const lockDir = path.join(basePath, LOCK_DIR)
-  if (!fs.existsSync(lockDir)) {
-    fs.mkdirSync(lockDir, { recursive: true })
+  try {
+    await fs.access(lockDir)
+  } catch {
+    await fs.mkdir(lockDir, { recursive: true })
   }
   return lockDir
 }
@@ -37,22 +39,24 @@ function getLockFileName(filePath: string): string {
 }
 
 // Get lock file path
-function getLockFilePath(basePath: string, filePath: string): string {
-  const lockDir = getLockDirectory(basePath)
+async function getLockFilePath(basePath: string, filePath: string): Promise<string> {
+  const lockDir = await getLockDirectory(basePath)
   const lockFileName = getLockFileName(filePath)
   return path.join(lockDir, lockFileName)
 }
 
 // Check if a file is currently locked
-export function checkLock(basePath: string, filePath: string): LockInfo | null {
-  const lockFilePath = getLockFilePath(basePath, filePath)
+export async function checkLock(basePath: string, filePath: string): Promise<LockInfo | null> {
+  const lockFilePath = await getLockFilePath(basePath, filePath)
 
-  if (!fs.existsSync(lockFilePath)) {
+  try {
+    await fs.access(lockFilePath)
+  } catch {
     return null
   }
 
   try {
-    const content = fs.readFileSync(lockFilePath, 'utf-8')
+    const content = await fs.readFile(lockFilePath, 'utf-8')
     const lockInfo: LockInfo = JSON.parse(content)
 
     // Check if lock is stale
@@ -61,7 +65,7 @@ export function checkLock(basePath: string, filePath: string): LockInfo | null {
       console.log(
         `[QCLockManager] Lock is stale (${Math.round(age / 1000)}s old), removing: ${filePath}`
       )
-      fs.unlinkSync(lockFilePath)
+      await fs.unlink(lockFilePath)
       return null
     }
 
@@ -70,7 +74,7 @@ export function checkLock(basePath: string, filePath: string): LockInfo | null {
     console.error('[QCLockManager] Error reading lock file:', error)
     // If we can't read it, remove it
     try {
-      fs.unlinkSync(lockFilePath)
+      await fs.unlink(lockFilePath)
     } catch {
       // Ignore errors when removing invalid lock file
     }
@@ -79,14 +83,14 @@ export function checkLock(basePath: string, filePath: string): LockInfo | null {
 }
 
 // Acquire a lock for a file
-export function acquireLock(
+export async function acquireLock(
   basePath: string,
   qcId: string,
   filePath: string
-): { success: boolean; error?: string; lockedBy?: string } {
+): Promise<{ success: boolean; error?: string; lockedBy?: string }> {
   try {
     // Check if already locked
-    const existingLock = checkLock(basePath, filePath)
+    const existingLock = await checkLock(basePath, filePath)
     if (existingLock) {
       return {
         success: false,
@@ -103,8 +107,8 @@ export function acquireLock(
       hostname: os.hostname()
     }
 
-    const lockFilePath = getLockFilePath(basePath, filePath)
-    fs.writeFileSync(lockFilePath, JSON.stringify(lockInfo, null, 2), 'utf-8')
+    const lockFilePath = await getLockFilePath(basePath, filePath)
+    await fs.writeFile(lockFilePath, JSON.stringify(lockInfo, null, 2), 'utf-8')
 
     console.log(`[QCLockManager] Lock acquired for: ${filePath}`)
     return { success: true }
@@ -116,16 +120,18 @@ export function acquireLock(
 }
 
 // Release a lock for a file
-export function releaseLock(basePath: string, filePath: string): boolean {
+export async function releaseLock(basePath: string, filePath: string): Promise<boolean> {
   try {
-    const lockFilePath = getLockFilePath(basePath, filePath)
+    const lockFilePath = await getLockFilePath(basePath, filePath)
 
-    if (!fs.existsSync(lockFilePath)) {
+    try {
+      await fs.access(lockFilePath)
+    } catch {
       console.warn(`[QCLockManager] Lock file doesn't exist: ${lockFilePath}`)
       return false
     }
 
-    fs.unlinkSync(lockFilePath)
+    await fs.unlink(lockFilePath)
     console.log(`[QCLockManager] Lock released for: ${filePath}`)
     return true
   } catch (error) {
@@ -135,15 +141,17 @@ export function releaseLock(basePath: string, filePath: string): boolean {
 }
 
 // Clean all stale locks in the lock directory
-export function cleanStaleLocks(basePath: string): number {
+export async function cleanStaleLocks(basePath: string): Promise<number> {
   try {
     const lockDir = path.join(basePath, LOCK_DIR)
 
-    if (!fs.existsSync(lockDir)) {
+    try {
+      await fs.access(lockDir)
+    } catch {
       return 0
     }
 
-    const files = fs.readdirSync(lockDir)
+    const files = await fs.readdir(lockDir)
     let cleaned = 0
 
     for (const file of files) {
@@ -154,12 +162,12 @@ export function cleanStaleLocks(basePath: string): number {
       const lockFilePath = path.join(lockDir, file)
 
       try {
-        const content = fs.readFileSync(lockFilePath, 'utf-8')
+        const content = await fs.readFile(lockFilePath, 'utf-8')
         const lockInfo: LockInfo = JSON.parse(content)
 
         const age = Date.now() - lockInfo.timestamp
         if (age > LOCK_TIMEOUT) {
-          fs.unlinkSync(lockFilePath)
+          await fs.unlink(lockFilePath)
           cleaned++
           console.log(
             `[QCLockManager] Cleaned stale lock: ${lockInfo.filePath} (${Math.round(age / 1000)}s old)`
@@ -167,7 +175,7 @@ export function cleanStaleLocks(basePath: string): number {
         }
       } catch (error) {
         // If we can't read/parse it, remove it
-        fs.unlinkSync(lockFilePath)
+        await fs.unlink(lockFilePath)
         cleaned++
         console.log(`[QCLockManager] Cleaned invalid lock file: ${file}`, error)
       }
@@ -185,15 +193,17 @@ export function cleanStaleLocks(basePath: string): number {
 }
 
 // Get all active locks
-export function getActiveLocks(basePath: string): LockInfo[] {
+export async function getActiveLocks(basePath: string): Promise<LockInfo[]> {
   try {
     const lockDir = path.join(basePath, LOCK_DIR)
 
-    if (!fs.existsSync(lockDir)) {
+    try {
+      await fs.access(lockDir)
+    } catch {
       return []
     }
 
-    const files = fs.readdirSync(lockDir)
+    const files = await fs.readdir(lockDir)
     const locks: LockInfo[] = []
 
     for (const file of files) {
@@ -204,7 +214,7 @@ export function getActiveLocks(basePath: string): LockInfo[] {
       const lockFilePath = path.join(lockDir, file)
 
       try {
-        const content = fs.readFileSync(lockFilePath, 'utf-8')
+        const content = await fs.readFile(lockFilePath, 'utf-8')
         const lockInfo: LockInfo = JSON.parse(content)
 
         // Skip stale locks

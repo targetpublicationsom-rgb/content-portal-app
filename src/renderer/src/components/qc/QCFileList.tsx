@@ -22,21 +22,13 @@ export default function QCFileList(): React.JSX.Element {
   useEffect(() => {
     loadRecords()
 
-    const unsubscribeStatus = qcService.onStatusUpdate((data) => {
-      setRecords((prev) =>
-        prev.map((r) => (r.qc_id === data.qcId ? { ...r, status: data.status } : r))
-      )
-    })
-
-    const unsubscribeFileDetected = qcService.onFileDetected((data) => {
-      if (data.record) {
-        setRecords((prev) => [data.record, ...prev])
-      }
-    })
+    // Poll database every 2 seconds for updates
+    const pollInterval = setInterval(() => {
+      loadRecords()
+    }, 2000)
 
     return () => {
-      unsubscribeStatus()
-      unsubscribeFileDetected()
+      clearInterval(pollInterval)
     }
   }, [])
 

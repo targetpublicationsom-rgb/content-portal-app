@@ -74,14 +74,7 @@ const api = {
     deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
     deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
     retryRecord: (qcId: string) => ipcRenderer.invoke('qc:retry-record', qcId),
-    getConfig: () => ipcRenderer.invoke('qc:get-config'),
-    updateConfig: (updates: any) => ipcRenderer.invoke('qc:update-config', updates),
-    addWatchFolder: (folder: string) => ipcRenderer.invoke('qc:add-watch-folder', folder),
-    removeWatchFolder: (folder: string) => ipcRenderer.invoke('qc:remove-watch-folder', folder),
-    testConnection: () => ipcRenderer.invoke('qc:test-connection'),
     getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
-    startWatcher: () => ipcRenderer.invoke('qc:start-watcher'),
-    stopWatcher: () => ipcRenderer.invoke('qc:stop-watcher'),
     onFileDetected: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:file-detected', callback)
       return () => ipcRenderer.removeListener('qc:file-detected', callback)

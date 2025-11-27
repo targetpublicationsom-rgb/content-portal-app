@@ -116,12 +116,6 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    // Register QC IPC handlers
-    if (mainWindow) {
-      registerQCIpcHandlers()
-      console.log('[Main] QC IPC handlers registered')
-    }
-
     // Check if app should start minimized (can be configured later)
     const startMinimized =
       process.argv.includes('--start-minimized') || process.argv.includes('--hidden')
@@ -173,7 +167,7 @@ function createWindow(): void {
     // Production: load from built files
     // In production, files are in app.asar/dist/renderer/ or out/renderer/
     let rendererPath = join(__dirname, '../renderer/index.html')
-    
+
     // Check if the default path exists
     if (!fs.existsSync(rendererPath)) {
       // Try alternative paths
@@ -183,7 +177,7 @@ function createWindow(): void {
         join(__dirname, '../../dist/renderer/index.html'),
         join(__dirname, '../../out/renderer/index.html')
       ]
-      
+
       for (const altPath of alternatives) {
         if (fs.existsSync(altPath)) {
           rendererPath = altPath
@@ -191,7 +185,7 @@ function createWindow(): void {
         }
       }
     }
-    
+
     console.log('[Main] Loading renderer from file:', rendererPath)
 
     // Check if the file exists before trying to load it
@@ -543,6 +537,10 @@ app.whenReady().then(async () => {
   // Create tray first to ensure it's available
   createTray()
 
+  // Register QC IPC handlers once at startup
+  registerQCIpcHandlers()
+  console.log('[Main] QC IPC handlers registered')
+
   // Then create window
   createWindow()
 
@@ -637,12 +635,12 @@ app.on('will-quit', async () => {
 
   // Ensure server is stopped
   setQuitting(true)
-  
+
   // Final attempt to kill any remaining content-orchestrator processes
   if (process.platform === 'win32') {
     try {
       execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 3000 })
-      console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
+      // console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
     } catch {
       // No processes found or already cleaned up
       console.log('[Main] Final cleanup: no content-orchestrator processes to clean up')
@@ -657,7 +655,7 @@ ipcMain.handle('get-server-info', () => {
     const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
     if (fs.existsSync(filePath)) {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      console.log('[Main] Loaded server info:', data)
+      // console.log('[Main] Loaded server info:', data)
       return data
     } else {
       console.warn('[Main] Server info file not found:', filePath)

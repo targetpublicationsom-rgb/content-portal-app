@@ -1,10 +1,10 @@
 import { BrowserWindow } from 'electron'
 import { EventEmitter } from 'events'
-import * as fs from 'fs'
-import { getWordConverter, initializeWordConverter, shutdownWordConverter } from './wordConverter'
+import * as fs from 'fs/promises'
+import { WorkerPool } from './WorkerPool'
+import type { WorkerMessage } from './workers/types'
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
 import { getQCExternalService, configureQCExternalService } from './qcExternalService'
-import { convertMdToDocx, initializePandoc, isPandocAvailable } from './pandocConverter'
 import { initializeQCConfig, getConfig, getQCOutputPaths, getLockBasePath } from './qcConfig'
 import {
   initializeQCDatabase,
@@ -34,10 +34,17 @@ class QCOrchestrator extends EventEmitter {
   private isInitialized = false
   private pollingInterval: NodeJS.Timeout | null = null
   private mainWindow: BrowserWindow | null = null
-  private jobQueue: Array<{ filePath: string; filename: string; isRetry?: boolean }> = []
+  private jobQueue: Array<{
+    filePath: string
+    filename: string
+    isRetry?: boolean
+    recordId?: string | null
+  }> = []
   private activeJobs = 0
   private readonly MAX_CONCURRENT_JOBS = 1
   private isProcessingQueue = false
+  private workerPool: WorkerPool | null = null
+  private processingFiles: Set<string> = new Set() // Track files currently being processed
 
   async initialize(mainWindow: BrowserWindow): Promise<void> {
     if (this.isInitialized) {
@@ -54,13 +61,24 @@ class QCOrchestrator extends EventEmitter {
 
       // Initialize all modules
       initializeQCDatabase()
-      initializePandoc()
       initializeQCNotifications(mainWindow)
-      await initializeWordConverter()
+
+      // Initialize worker pool for heavy operations
+      this.workerPool = new WorkerPool()
+      await this.workerPool.initialize()
+
+      // Setup worker pool event listeners
+      this.workerPool.on('progress', ({ response }) => {
+        // Forward progress events to renderer
+        this.emitToRenderer('qc:conversion-progress', response.data)
+      })
+
+      this.workerPool.on('worker-error', ({ workerId, type, error }) => {
+        console.error(`[QCOrchestrator] Worker ${workerId} (${type}) error:`, error)
+      })
 
       // Setup event listeners
       this.setupWatcherEvents()
-      this.setupConverterEvents()
 
       // Configure external service if API settings exist
       const config = getConfig()
@@ -93,8 +111,11 @@ class QCOrchestrator extends EventEmitter {
     // Stop watcher
     stopQCWatcher()
 
-    // Shutdown Word
-    await shutdownWordConverter()
+    // Shutdown worker pool
+    if (this.workerPool) {
+      await this.workerPool.shutdown()
+      this.workerPool = null
+    }
 
     // Close database
     closeQCDatabase()
@@ -117,31 +138,52 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
-  private setupConverterEvents(): void {
-    const converter = getWordConverter()
-
-    converter.on('conversion-start', (data: { docxPath: string; pdfPath: string }) => {
-      console.log(`[QCOrchestrator] Conversion started: ${data.docxPath}`)
-    })
-
-    converter.on(
-      'conversion-complete',
-      (data: { docxPath: string; pdfPath: string; duration: number }) => {
-        console.log(`[QCOrchestrator] Conversion complete: ${data.docxPath} (${data.duration}s)`)
-      }
-    )
-
-    converter.on('conversion-error', (data: { docxPath: string; error: Error }) => {
-      console.error(`[QCOrchestrator] Conversion error: ${data.docxPath}`, data.error)
-    })
-
-    converter.on('queue-update', (queueLength: number) => {
-      this.emitToRenderer('qc:queue-update', { queueLength })
-    })
-  }
-
   private enqueueJob(filePath: string, filename: string, isRetry = false): void {
-    this.jobQueue.push({ filePath, filename, isRetry })
+    // Check if this file is already being processed (in queue or active)
+    if (this.processingFiles.has(filePath) && !isRetry) {
+      console.log(`[QCOrchestrator] File already queued/processing, skipping: ${filename}`)
+      return
+    }
+    
+    // Create database record immediately with QUEUED status so it's visible in UI
+    let recordId: string | null = null
+    
+    if (!isRetry) {
+      // Check if record already exists
+      const existingRecord = getRecordByFilePath(filePath)
+      if (!existingRecord) {
+        // Create new record with QUEUED status
+        const record = createQCRecord(filePath)
+        recordId = record.qc_id
+        updateQCStatus(record.qc_id, 'QUEUED')
+        
+        // Emit to renderer so UI updates immediately
+        this.emitToRenderer('qc:file-detected', { record })
+      } else {
+        // Use existing record
+        recordId = existingRecord.qc_id
+        
+        // Skip if already completed or currently processing
+        if (existingRecord.status === 'COMPLETED') {
+          console.log(`[QCOrchestrator] Skipping - already completed: ${filename}`)
+          return
+        }
+        if (['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
+          console.log(`[QCOrchestrator] Skipping - already ${existingRecord.status}: ${filename}`)
+          return
+        }
+        
+        // For FAILED or QUEUED records, update status back to QUEUED for retry
+        if (existingRecord.status === 'FAILED') {
+          updateQCStatus(recordId, 'QUEUED')
+        }
+      }
+    }
+    
+    // Add to processing set
+    this.processingFiles.add(filePath)
+    
+    this.jobQueue.push({ filePath, filename, isRetry, recordId })
     console.log(
       `[QCOrchestrator] Job queued: ${filename} (Queue: ${this.jobQueue.length}, Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS})`
     )
@@ -178,8 +220,12 @@ class QCOrchestrator extends EventEmitter {
       })
 
       // Process job without awaiting (parallel execution)
-      this.processNewFile(job.filePath, job.filename, job.isRetry).finally(() => {
+      this.processNewFile(job.filePath, job.filename, job.isRetry, job.recordId).finally(() => {
         this.activeJobs--
+        
+        // Remove from processing set when job completes
+        this.processingFiles.delete(job.filePath)
+        
         console.log(
           `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
         )
@@ -199,90 +245,45 @@ class QCOrchestrator extends EventEmitter {
     this.isProcessingQueue = false
   }
 
-  private getQueueStatus(): {
-    queueLength: number
-    activeJobs: number
-    maxConcurrent: number
-  } {
-    return {
-      queueLength: this.jobQueue.length,
-      activeJobs: this.activeJobs,
-      maxConcurrent: this.MAX_CONCURRENT_JOBS
-    }
-  }
-
-  private async processNewFile(filePath: string, filename: string, isRetry = false): Promise<void> {
-    let recordId: string | null = null
+  private async processNewFile(filePath: string, filename: string, _isRetry = false, existingRecordId?: string | null): Promise<void> {
+    let recordId: string | null = existingRecordId || null
     const lockBasePath = getLockBasePath()
 
     try {
       // Clean stale locks first
-      cleanStaleLocks(lockBasePath)
+      await cleanStaleLocks(lockBasePath)
 
       // Check if file is currently locked by another user
-      const existingLock = checkLock(lockBasePath, filePath)
+      const existingLock = await checkLock(lockBasePath, filePath)
       if (existingLock) {
         console.log(`[QCOrchestrator] File is locked by ${existingLock.processedBy}: ${filename}`)
+        if (recordId) {
+          updateQCStatus(recordId, 'FAILED', `File is locked by ${existingLock.processedBy}`)
+        }
         return
       }
 
-      // Check if this file was already processed or is currently being processed
-      // Skip these checks for retry operations since they've already been explicitly requested
-      const existingRecord = getRecordByFilePath(filePath)
-      if (existingRecord && !isRetry) {
-        // Never reprocess COMPLETED files automatically
-        if (existingRecord.status === 'COMPLETED') {
-          console.log(
-            `[QCOrchestrator] Skipping - already completed by ${existingRecord.processed_by}: ${filename}`
-          )
-          return
-        }
-
-        // Skip if currently being processed (not FAILED)
-        if (
-          [
-            'QUEUED',
-            'CONVERTING',
-            'SUBMITTING',
-            'PROCESSING',
-            'DOWNLOADING',
-            'CONVERTING_REPORT'
-          ].includes(existingRecord.status)
-        ) {
-          const timeSinceSubmit =
-            new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
-          // If stuck for more than 10 minutes, mark as FAILED
-          if (timeSinceSubmit < 10 * 60 * 1000) {
-            console.log(
-              `[QCOrchestrator] Skipping - already ${existingRecord.status} by ${existingRecord.processed_by}: ${filename}`
-            )
-            return
-          } else {
-            console.log(
-              `[QCOrchestrator] Marking stuck file as FAILED (${existingRecord.status} for ${Math.round(timeSinceSubmit / 1000 / 60)} min): ${filename}`
-            )
-            updateQCStatus(
-              existingRecord.qc_id,
-              'FAILED',
-              `Stuck in ${existingRecord.status} state for more than 10 minutes`
-            )
-            return
-          }
-        }
-
-        // Skip FAILED files too - they need explicit retry via button
-        if (existingRecord.status === 'FAILED') {
-          console.log(`[QCOrchestrator] Skipping failed file - use Retry button: ${filename}`)
-          return
+      // If we have a recordId from queueing, use it
+      if (!recordId) {
+        // No record from queueing, check if one exists (should always exist from enqueueJob)
+        const existingRecord = getRecordByFilePath(filePath)
+        if (existingRecord) {
+          recordId = existingRecord.qc_id
+        } else {
+          // This should never happen - enqueueJob always creates a record
+          console.error(`[QCOrchestrator] CRITICAL: No record found for ${filename} - this should not happen!`)
+          throw new Error('No database record found - file was not properly queued')
         }
       }
 
-      // Create QC record
-      const record = createQCRecord(filePath)
-      recordId = record.qc_id
+      // Get the record
+      const record = getQCRecord(recordId)
+      if (!record) {
+        throw new Error('Failed to get QC record')
+      }
 
       // Acquire lock before processing
-      const lockResult = acquireLock(lockBasePath, record.qc_id, filePath)
+      const lockResult = await acquireLock(lockBasePath, record.qc_id, filePath)
       if (!lockResult.success) {
         console.log(
           `[QCOrchestrator] Could not acquire lock for ${filename}: ${lockResult.error || 'locked by ' + lockResult.lockedBy}`
@@ -290,9 +291,6 @@ class QCOrchestrator extends EventEmitter {
         updateQCStatus(record.qc_id, 'FAILED', lockResult.error || 'File is locked')
         return
       }
-
-      // notifyQCStarted(filename) // Removed: Don't show notification on start
-      this.emitToRenderer('qc:file-detected', { record })
 
       // Get output paths
       const paths = getQCOutputPaths(record.qc_id, filename)
@@ -308,13 +306,13 @@ class QCOrchestrator extends EventEmitter {
       await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
 
       // Release lock after successful processing
-      releaseLock(lockBasePath, filePath)
+      await releaseLock(lockBasePath, filePath)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QCOrchestrator] Failed to process file ${filename}:`, error)
 
       // Release lock on error
-      releaseLock(lockBasePath, filePath)
+      await releaseLock(lockBasePath, filePath)
 
       // Use the existing record ID, don't create a new one
       if (recordId) {
@@ -330,8 +328,18 @@ class QCOrchestrator extends EventEmitter {
   }
 
   private async convertToPdf(docxPath: string, pdfPath: string): Promise<string> {
-    const converter = getWordConverter()
-    return await converter.convertDocxToPdf(docxPath, pdfPath)
+    if (!this.workerPool) {
+      throw new Error('Worker pool not initialized')
+    }
+
+    const message: WorkerMessage = {
+      id: `convert-${Date.now()}`,
+      type: 'convert-docx-to-pdf',
+      data: { docxPath, pdfPath }
+    }
+
+    const response = await this.workerPool.dispatchJob('word', message)
+    return (response.data as { pdfPath: string }).pdfPath
   }
 
   private async submitToExternalAPI(
@@ -418,36 +426,49 @@ class QCOrchestrator extends EventEmitter {
       updateQCStatus(record.qc_id, 'DOWNLOADING')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'DOWNLOADING' })
 
-      fs.writeFileSync(paths.reportMdPath, reportMarkdown, 'utf-8')
+      await fs.writeFile(paths.reportMdPath, reportMarkdown, 'utf-8')
 
-      // Convert MD to DOCX
+      // Convert MD to DOCX using worker
       updateQCStatus(record.qc_id, 'CONVERTING_REPORT')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING_REPORT' })
 
-      if (isPandocAvailable()) {
-        await convertMdToDocx(paths.reportMdPath, paths.reportDocxPath)
-      } else {
-        console.warn('[QCOrchestrator] Pandoc not available, skipping DOCX conversion')
+      try {
+        if (this.workerPool) {
+          const pandocMessage: WorkerMessage = {
+            id: `pandoc-${Date.now()}`,
+            type: 'convert-md-to-docx',
+            data: { mdPath: paths.reportMdPath, docxPath: paths.reportDocxPath }
+          }
+          await this.workerPool.dispatchJob('pandoc', pandocMessage)
+        }
+      } catch (pandocError) {
+        console.warn('[QCOrchestrator] Pandoc conversion failed:', pandocError)
       }
 
-      // Parse issues count from markdown (extract from JSON if present)
+      // Parse issues count using report parser worker
       let issuesFound = 0
       let issuesLow = 0
       let issuesMedium = 0
       let issuesHigh = 0
 
       try {
-        // Try to extract JSON from markdown
-        const jsonMatch = reportMarkdown.match(/```json\s*({[\s\S]*?})\s*```/)
-        if (jsonMatch) {
-          const jsonData = JSON.parse(jsonMatch[1])
-          const findings = jsonData.findings || []
-          issuesFound = findings.length
-
-          // Count by severity
-          issuesLow = findings.filter((f: any) => f.severity === 'Low').length
-          issuesMedium = findings.filter((f: any) => f.severity === 'Medium').length
-          issuesHigh = findings.filter((f: any) => f.severity === 'High').length
+        if (this.workerPool) {
+          const parseMessage: WorkerMessage = {
+            id: `parse-${Date.now()}`,
+            type: 'parse-report',
+            data: { reportPath: paths.reportMdPath }
+          }
+          const parseResponse = await this.workerPool.dispatchJob('reportParser', parseMessage)
+          const parsedData = parseResponse.data as {
+            issuesFound: number
+            issuesLow: number
+            issuesMedium: number
+            issuesHigh: number
+          }
+          issuesFound = parsedData.issuesFound
+          issuesLow = parsedData.issuesLow
+          issuesMedium = parsedData.issuesMedium
+          issuesHigh = parsedData.issuesHigh
         }
       } catch (parseError) {
         console.warn('[QCOrchestrator] Could not parse issues from report:', parseError)

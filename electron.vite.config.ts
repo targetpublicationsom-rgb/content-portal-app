@@ -10,6 +10,19 @@ export default defineConfig(({ mode }) => {
   return {
     main: {
       plugins: [externalizeDepsPlugin()],
+      build: {
+        rollupOptions: {
+          input: {
+            index: resolve(__dirname, 'src/main/index.ts'),
+            'workers/wordConverter.worker': resolve(__dirname, 'src/main/qc/workers/wordConverter.worker.ts'),
+            'workers/pandoc.worker': resolve(__dirname, 'src/main/qc/workers/pandoc.worker.ts'),
+            'workers/reportParser.worker': resolve(__dirname, 'src/main/qc/workers/reportParser.worker.ts')
+          },
+          output: {
+            entryFileNames: '[name].js'
+          }
+        }
+      },
       define: {
         'process.env.VITE_QC_WATCH_FOLDER': JSON.stringify(env.VITE_QC_WATCH_FOLDER),
         'process.env.VITE_QC_API_URL': JSON.stringify(env.VITE_QC_API_URL),

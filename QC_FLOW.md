@@ -47,13 +47,16 @@ CREATE TABLE qc_records (
   file_path TEXT NOT NULL,          -- Original file path
   original_name TEXT NOT NULL,      -- Filename
   pdf_path TEXT,                    -- Output PDF path
-  status TEXT NOT NULL,             -- QUEUED|CONVERTING|PROCESSING|COMPLETED|FAILED
+  status TEXT NOT NULL,             -- QUEUED|CONVERTING|SUBMITTING|PROCESSING|DOWNLOADING|CONVERTING_REPORT|COMPLETED|FAILED
   submitted_at TEXT NOT NULL,       -- ISO timestamp
   completed_at TEXT,                -- ISO timestamp
   report_md_path TEXT,              -- Markdown report path
   report_docx_path TEXT,            -- DOCX report path
   qc_score REAL,                    -- 0-100
   issues_found INTEGER,             -- Count
+  issues_low INTEGER DEFAULT 0,     -- Low severity count
+  issues_medium INTEGER DEFAULT 0,  -- Medium severity count
+  issues_high INTEGER DEFAULT 0,    -- High severity count
   external_qc_id TEXT,              -- API reference
   error_message TEXT,               -- Error details
   retry_count INTEGER DEFAULT 0,    -- Retry attempts
@@ -150,6 +153,8 @@ CREATE TABLE qc_records (
 ### 6. **Orchestrator** (`qcOrchestrator.ts`)
 - **Purpose**: Coordinate all QC operations
 - **Pattern**: Singleton instance
+- **Concurrency**: Limited to 1 concurrent job (sequential processing)
+- **Job Queue**: FIFO queue with retry support
 
 **Initialization Flow:**
 ```
@@ -161,26 +166,52 @@ CREATE TABLE qc_records (
 6. setupWatcherEvents()          → Listen to file-detected events
 7. setupConverterEvents()        → Listen to conversion events
 8. configureExternalService()    → Setup API if configured
+9. startStatusPolling()          → Poll for external QC status updates
 ```
 
 **Key Methods:**
 - `initialize(mainWindow)`: Setup entire QC system
-- `shutdown()`: Cleanup all resources
+- `shutdown()`: Cleanup all resources (stops watcher, Word, database)
 - `restartWatcher()`: Reload config + reinit database + restart watcher
-- `processNewFile()`: Main file processing logic
+- `processNewFile(filePath, filename, isRetry)`: Main file processing logic
+- `enqueueJob(filePath, filename, isRetry)`: Add job to queue
+- `processQueue()`: Process queued jobs respecting concurrency limits
+- `retryRecord(qcId)`: Retry failed jobs with updated timestamp
 - `handleConversionComplete()`: Post-conversion handler
 
 **File Processing Flow (`processNewFile`):**
 ```
 1. Clean stale locks (>10 min)
 2. Check if file locked by another user → Skip if locked
-3. Check database for duplicate (within 5 min) → Skip if found
+3. Check database for existing record:
+   - Skip if COMPLETED
+   - Skip if in progress (QUEUED/CONVERTING/etc.) for <10 min
+   - Mark as FAILED if stuck for >10 min
+   - Skip if FAILED (use Retry button)
+   - Skip all checks if isRetry=true
 4. Acquire lock for this file → Error if fails
 5. Create database record (status: QUEUED)
-6. Queue file for conversion
-7. On success: Release lock
-8. On error: Release lock, update record with error
+6. Convert DOCX to PDF (status: CONVERTING)
+7. Submit to external API (status: SUBMITTING)
+8. Poll for completion (status: PROCESSING)
+9. Download report (status: DOWNLOADING)
+10. Convert report to DOCX (status: CONVERTING_REPORT)
+11. Parse and save severity breakdown (Low/Medium/High)
+12. Update status to COMPLETED
+13. Release lock
+14. On error: Release lock, update record with error
 ```
+
+**Retry Logic:**
+- Resets `submitted_at` timestamp to prevent false "stuck file" detection
+- Updates status to QUEUED and clears error messages
+- Enqueues job with `isRetry=true` flag to bypass duplicate checks
+- Immediately triggers queue processing
+
+**Concurrency Control:**
+- `MAX_CONCURRENT_JOBS = 1`: Sequential processing to prevent Word/memory issues
+- Jobs are queued and processed one at a time
+- Queue status emitted to renderer for UI updates
 
 ---
 
@@ -198,6 +229,7 @@ qc:test-connection     → Test external API connection
 qc:get-watcher-status  → Check if watcher is active
 qc:start-watcher       → Start watching folder
 qc:stop-watcher        → Stop watching folder
+qc:retry-record        → Retry failed QC job
 qc:delete-record       → Delete single record
 qc:delete-all-records  → Delete all records
 ```
@@ -222,9 +254,12 @@ qc:error               → Error occurred
 
 #### **QCFileList.tsx**
 - Table of all QC records
-- Columns: Filename, Status, Submitted, Completed, Score, Issues, Processed By
+- Columns: Filename, Status, Submitted, Completed, Score, Issues (with severity breakdown: Low/Medium/High), Processed By
+- **Status Badges**: Color-coded (QUEUED=yellow, CONVERTING=blue, PROCESSING=purple, COMPLETED=green, FAILED=red)
+- **Retry Button**: For failed records, resets timestamp and re-queues
 - Filter by status
 - Delete individual/all records
+- Real-time updates via IPC events
 
 #### **Services (`qc.service.ts`)**
 - Wrapper around IPC calls
@@ -259,18 +294,29 @@ qc:error               → Error occurred
    - Creates database record (status: QUEUED)
    - Queues for conversion
 
-4. Conversion starts
-   - Status: CONVERTING
-   - Word COM converts DOCX → PDF
+4. Conversion and submission starts (sequential, one at a time)
+   - Status: CONVERTING → Word COM converts DOCX → PDF
    - PDF saved to `{WatchFolder}\.qc\pdfs\{qcId}\report.pdf`
+   - Status: SUBMITTING → Uploads PDF to external API
+   - Status: PROCESSING → External service analyzes document
+   - Orchestrator polls for completion every 5 seconds
+   - Status: DOWNLOADING → Downloads QC report (Markdown)
+   - Status: CONVERTING_REPORT → Converts report to DOCX using Pandoc
+   - Parses findings for severity breakdown (Low/Medium/High)
 
-5. Conversion completes
+5. Processing completes
    - Status: COMPLETED
    - Lock released
-   - Record updated with PDF path, completion time
-   - User sees update in File List
+   - Record updated with PDF path, report paths, severity counts, completion time
+   - User sees update in File List with issue breakdown
 
-6. If another user drops same file (within 5 min)
+6. If job fails
+   - Status: FAILED
+   - Error message saved to database
+   - User can click "Retry" button to re-process
+   - Retry resets timestamp and bypasses duplicate checks
+
+7. If another user drops same file
    - Watcher detects file
    - Database check finds existing record → Skip
    - No duplicate processing
@@ -279,6 +325,12 @@ qc:error               → Error occurred
    - Watcher detects file
    - Lock check shows locked by User2@Machine2 → Skip
    - Logs: "File already locked by User2@Machine2"
+
+8. If file stuck in processing (>10 minutes)
+   - Next watcher scan detects file
+   - Time check shows >10 min in QUEUED/PROCESSING state
+   - Automatically marks as FAILED
+   - User can retry via UI button
 
 ### **Multi-User Coordination**
 - **Machine 1**: Drops `file.docx` at 10:00:00
@@ -349,6 +401,21 @@ qc:error               → Error occurred
 4. **"Database locked"**
    - Solution: Another process accessing database, retry in a moment
 
+5. **"Stuck in QUEUED/PROCESSING state"**
+   - Automatic: Marked as FAILED after 10 minutes
+   - Manual: Click "Retry" button to reprocess
+
+6. **"External API error"**
+   - Check API URL and API key in `.env`
+   - Test connection via dashboard
+   - View error message in file list
+
+### **Retry Strategy:**
+- Failed jobs can be retried via UI button
+- Retry resets timestamp and clears error state
+- Bypasses duplicate detection checks
+- Respects concurrency limits (queued if other job running)
+
 ---
 
 ## Cleanup & Maintenance
@@ -376,20 +443,39 @@ qc:error               → Error occurred
    - Survives process crashes
    - Visible for debugging
 
-3. **5-minute duplicate window**
-   - Prevents re-processing same file
-   - Short enough to allow reprocessing if needed
-   - Long enough to avoid race conditions
+3. **Stuck file detection (10 minutes)**
+   - Automatically marks jobs as FAILED if stuck
+   - Prevents indefinite blocking
+   - User can manually retry
 
-4. **Centralized .qc folder**
+4. **Sequential processing (concurrency = 1)**
+   - Prevents Word memory issues and app freezing
+   - Ensures stable document conversion
+   - Single Word instance handles all conversions
+
+5. **Retry mechanism**
+   - Resets timestamp to prevent false "stuck" detection
+   - Bypasses duplicate checks with `isRetry` flag
+   - Clears error messages and external IDs
+
+6. **Severity breakdown tracking**
+   - Parses QC report findings for Low/Medium/High severity
+   - Stores counts in database
+   - Displays grouped in UI (e.g., "Issues: 2 Low, 5 Medium, 1 High")
+
+7. **Centralized .qc folder**
    - All data in one place
    - Easy to backup/share
    - Simplified multi-user deployment
 
-5. **Read-only config at runtime**
+8. **Read-only config at runtime**
    - Prevents user errors
    - Forces deliberate configuration
    - Clearer deployment model
+
+9. **No notification on start**
+   - Reduces notification noise
+   - Only notifies on completion or failure
 
 ---
 
