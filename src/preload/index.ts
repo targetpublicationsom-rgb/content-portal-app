@@ -46,6 +46,16 @@ const api = {
   // Get app version
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
 
+  // Auth token management
+  storeAuthToken: (token: string): Promise<void> =>
+    ipcRenderer.invoke('store-auth-token', token),
+
+  getAuthToken: (): Promise<string | null> =>
+    ipcRenderer.invoke('get-auth-token'),
+
+  clearAuthToken: (): Promise<void> =>
+    ipcRenderer.invoke('clear-auth-token'),
+
   // QC Module APIs
   qc: {
     getRecords: (filters?: any, limit?: number, offset?: number) =>

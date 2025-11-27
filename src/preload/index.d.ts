@@ -47,6 +47,10 @@ interface API {
       }
     ) => void
   ) => () => void
+  // Auth token management
+  storeAuthToken: (token: string) => Promise<void>
+  getAuthToken: () => Promise<string | null>
+  clearAuthToken: () => Promise<void>
   startFileWatcher: (folderPath: string) => Promise<{ success: boolean; message: string }>
   stopFileWatcher: () => Promise<{ success: boolean; message: string }>
   getWatcherStatus: () => Promise<{
