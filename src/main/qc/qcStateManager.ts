@@ -40,6 +40,9 @@ export function initializeQCDatabase(): void {
       report_docx_path TEXT,
       qc_score REAL,
       issues_found INTEGER,
+      issues_low INTEGER,
+      issues_medium INTEGER,
+      issues_high INTEGER,
       external_qc_id TEXT,
       error_message TEXT,
       retry_count INTEGER DEFAULT 0,
@@ -78,6 +81,9 @@ export function createQCRecord(filePath: string): QCRecord {
     report_docx_path: null,
     qc_score: null,
     issues_found: null,
+    issues_low: null,
+    issues_medium: null,
+    issues_high: null,
     external_qc_id: null,
     error_message: null,
     retry_count: 0,
@@ -88,8 +94,9 @@ export function createQCRecord(filePath: string): QCRecord {
     INSERT INTO qc_records (
       qc_id, file_path, original_name, pdf_path, status, submitted_at,
       completed_at, report_md_path, report_docx_path, qc_score, issues_found,
+      issues_low, issues_medium, issues_high,
       external_qc_id, error_message, retry_count, processed_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   stmt.run(
@@ -104,6 +111,9 @@ export function createQCRecord(filePath: string): QCRecord {
     record.report_docx_path,
     record.qc_score,
     record.issues_found,
+    record.issues_low,
+    record.issues_medium,
+    record.issues_high,
     record.external_qc_id,
     record.error_message,
     record.retry_count,
@@ -152,18 +162,22 @@ export function updateQCReport(
   reportMdPath: string,
   reportDocxPath: string,
   qcScore: number | null,
-  issuesFound: number
+  issuesFound: number,
+  issuesLow: number,
+  issuesMedium: number,
+  issuesHigh: number
 ): void {
   if (!db) throw new Error('Database not initialized')
 
   const stmt = db.prepare(`
     UPDATE qc_records 
-    SET report_md_path = ?, report_docx_path = ?, qc_score = ?, issues_found = ?
+    SET report_md_path = ?, report_docx_path = ?, qc_score = ?, issues_found = ?,
+        issues_low = ?, issues_medium = ?, issues_high = ?
     WHERE qc_id = ?
   `)
 
-  stmt.run(reportMdPath, reportDocxPath, qcScore, issuesFound, qcId)
-  console.log(`[QCStateManager] Updated ${qcId} with report data (score: ${qcScore})`)
+  stmt.run(reportMdPath, reportDocxPath, qcScore, issuesFound, issuesLow, issuesMedium, issuesHigh, qcId)
+  console.log(`[QCStateManager] Updated ${qcId} with report data (Issues: ${issuesFound}, Low: ${issuesLow}, Med: ${issuesMedium}, High: ${issuesHigh})`)
 }
 
 // Update QC record with partial data

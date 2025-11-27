@@ -84,7 +84,7 @@ export default function QCFileList(): React.JSX.Element {
       setRecords((prev) =>
         prev.map((r) => (r.qc_id === qcId ? { ...r, status: 'QUEUED' as QCStatus } : r))
       )
-      
+
       // Call retry in background
       await qcService.retryRecord(qcId)
     } catch (err) {
@@ -156,7 +156,7 @@ export default function QCFileList(): React.JSX.Element {
               <TableRow>
                 <TableHead>Filename</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Issues</TableHead>
+                <TableHead className="text-center">Issues</TableHead>
                 <TableHead>Processed By</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead>Actions</TableHead>
@@ -165,7 +165,7 @@ export default function QCFileList(): React.JSX.Element {
             <TableBody>
               {records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No QC records found
                   </TableCell>
                 </TableRow>
@@ -174,9 +174,14 @@ export default function QCFileList(): React.JSX.Element {
                   <TableRow key={record.qc_id}>
                     <TableCell className="font-medium">{record.original_name}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>
-                      {record.issues_found !== null ? record.issues_found : '—'}
-                    </TableCell>
+                    <TableCell>{record.issues_found}</TableCell>
+
+                    {/* Grouped Severity Issues */}
+                    {/* <TableCell className="text-center font-medium">
+                      <span className="text-blue-600"> Low: {record.issues_low || 0}</span>
+                      <span className="text-yellow-600"> Med: {record.issues_medium || 0}</span>
+                      <span className="text-red-600"> High: {record.issues_high || 0}</span>
+                    </TableCell> */}
                     <TableCell className="text-xs font-mono text-muted-foreground">
                       {record.processed_by || '—'}
                     </TableCell>

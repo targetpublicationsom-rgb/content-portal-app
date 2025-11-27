@@ -22,7 +22,6 @@ import {
 } from './qcStateManager'
 import {
   initializeQCNotifications,
-  notifyQCStarted,
   notifyQCCompleted,
   notifyQCFailed,
   notifyServiceOffline
@@ -35,9 +34,9 @@ class QCOrchestrator extends EventEmitter {
   private isInitialized = false
   private pollingInterval: NodeJS.Timeout | null = null
   private mainWindow: BrowserWindow | null = null
-  private jobQueue: Array<{ filePath: string; filename: string }> = []
+  private jobQueue: Array<{ filePath: string; filename: string; isRetry?: boolean }> = []
   private activeJobs = 0
-  private readonly MAX_CONCURRENT_JOBS = 3
+  private readonly MAX_CONCURRENT_JOBS = 1
   private isProcessingQueue = false
 
   async initialize(mainWindow: BrowserWindow): Promise<void> {
@@ -72,10 +71,7 @@ class QCOrchestrator extends EventEmitter {
       // Start polling for processing records
       this.startStatusPolling()
 
-      // Start watcher if auto-submit is enabled and folders are configured
-      if (config.autoSubmit && config.watchFolders.length > 0) {
-        startQCWatcher(config.watchFolders)
-      }
+      // DO NOT auto-start watcher - user must manually start it via dashboard button
 
       this.isInitialized = true
       console.log('[QCOrchestrator] Initialized successfully')
@@ -144,8 +140,8 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
-  private enqueueJob(filePath: string, filename: string): void {
-    this.jobQueue.push({ filePath, filename })
+  private enqueueJob(filePath: string, filename: string, isRetry = false): void {
+    this.jobQueue.push({ filePath, filename, isRetry })
     console.log(
       `[QCOrchestrator] Job queued: ${filename} (Queue: ${this.jobQueue.length}, Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS})`
     )
@@ -182,7 +178,7 @@ class QCOrchestrator extends EventEmitter {
       })
 
       // Process job without awaiting (parallel execution)
-      this.processNewFile(job.filePath, job.filename).finally(() => {
+      this.processNewFile(job.filePath, job.filename, job.isRetry).finally(() => {
         this.activeJobs--
         console.log(
           `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
@@ -215,7 +211,7 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
-  private async processNewFile(filePath: string, filename: string): Promise<void> {
+  private async processNewFile(filePath: string, filename: string, isRetry = false): Promise<void> {
     let recordId: string | null = null
     const lockBasePath = getLockBasePath()
 
@@ -231,8 +227,9 @@ class QCOrchestrator extends EventEmitter {
       }
 
       // Check if this file was already processed or is currently being processed
+      // Skip these checks for retry operations since they've already been explicitly requested
       const existingRecord = getRecordByFilePath(filePath)
-      if (existingRecord) {
+      if (existingRecord && !isRetry) {
         // Never reprocess COMPLETED files automatically
         if (existingRecord.status === 'COMPLETED') {
           console.log(
@@ -294,7 +291,7 @@ class QCOrchestrator extends EventEmitter {
         return
       }
 
-      notifyQCStarted(filename)
+      // notifyQCStarted(filename) // Removed: Don't show notification on start
       this.emitToRenderer('qc:file-detected', { record })
 
       // Get output paths
@@ -435,20 +432,38 @@ class QCOrchestrator extends EventEmitter {
 
       // Parse issues count from markdown (extract from JSON if present)
       let issuesFound = 0
+      let issuesLow = 0
+      let issuesMedium = 0
+      let issuesHigh = 0
 
       try {
         // Try to extract JSON from markdown
         const jsonMatch = reportMarkdown.match(/```json\s*({[\s\S]*?})\s*```/)
         if (jsonMatch) {
           const jsonData = JSON.parse(jsonMatch[1])
-          issuesFound = jsonData.findings?.length || 0
+          const findings = jsonData.findings || []
+          issuesFound = findings.length
+
+          // Count by severity
+          issuesLow = findings.filter((f: any) => f.severity === 'Low').length
+          issuesMedium = findings.filter((f: any) => f.severity === 'Medium').length
+          issuesHigh = findings.filter((f: any) => f.severity === 'High').length
         }
       } catch (parseError) {
         console.warn('[QCOrchestrator] Could not parse issues from report:', parseError)
       }
 
       // Update record with report data (no score)
-      updateQCReport(record.qc_id, paths.reportMdPath, paths.reportDocxPath, null, issuesFound)
+      updateQCReport(
+        record.qc_id,
+        paths.reportMdPath,
+        paths.reportDocxPath,
+        null,
+        issuesFound,
+        issuesLow,
+        issuesMedium,
+        issuesHigh
+      )
 
       updateQCStatus(record.qc_id, 'COMPLETED')
       notifyQCCompleted(record.original_name, null)
@@ -509,19 +524,22 @@ class QCOrchestrator extends EventEmitter {
 
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
 
-    // Clear external QC ID and reset status
+    // Reset all retry-related fields including timestamp and status in a single update
     updateQCRecord(qcId, {
+      status: 'QUEUED',
       external_qc_id: null,
       error_message: null,
       retry_count: 0,
       submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
     })
 
-    updateQCStatus(qcId, 'QUEUED')
     this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
 
     // Enqueue the retry job (respects concurrency limits)
-    this.enqueueJob(record.file_path, record.original_name)
+    this.enqueueJob(record.file_path, record.original_name, true)
+
+    // Trigger queue processing immediately
+    this.processQueue()
   }
 }
 

@@ -22,6 +22,9 @@ export interface QCRecord {
   report_docx_path: string | null
   qc_score: number | null
   issues_found: number | null
+  issues_low: number | null
+  issues_medium: number | null
+  issues_high: number | null
   external_qc_id: string | null
   error_message: string | null
   retry_count: number
