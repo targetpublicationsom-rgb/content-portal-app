@@ -6,7 +6,8 @@ import {
   shell,
   nativeImage,
   ipcMain,
-  globalShortcut
+  globalShortcut,
+  safeStorage
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -30,6 +31,7 @@ import {
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const DEFAULT_PORT = 6284
+const TOKEN_FILE = join(app.getPath('userData'), 'auth-token.enc')
 
 // Handle single instance - prevent multiple instances from running
 const gotTheLock = app.requestSingleInstanceLock()
@@ -639,4 +641,56 @@ ipcMain.handle('get-server-info', () => {
 ipcMain.handle('is-server-running', () => isServerRunning())
 ipcMain.handle('is-server-starting', () => isServerStarting())
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
+
+// Auth token management IPC handlers
+ipcMain.handle('store-auth-token', async (_event, token: string) => {
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(token)
+      fs.writeFileSync(TOKEN_FILE, encrypted)
+      console.log('[Main] Auth token stored securely')
+    } else {
+      // Fallback: store as base64 (less secure but works everywhere)
+      const encoded = Buffer.from(token).toString('base64')
+      fs.writeFileSync(TOKEN_FILE, encoded)
+      console.log('[Main] Auth token stored (fallback mode)')
+    }
+  } catch (error) {
+    console.error('[Main] Failed to store auth token:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('get-auth-token', async () => {
+  try {
+    if (!fs.existsSync(TOKEN_FILE)) {
+      return null
+    }
+
+    const data = fs.readFileSync(TOKEN_FILE)
+
+    if (safeStorage.isEncryptionAvailable()) {
+      const decrypted = safeStorage.decryptString(data)
+      return decrypted
+    } else {
+      // Fallback: decode from base64
+      const decoded = Buffer.from(data.toString(), 'base64').toString('utf-8')
+      return decoded
+    }
+  } catch (error) {
+    console.error('[Main] Failed to get auth token:', error)
+    return null
+  }
+})
+
+ipcMain.handle('clear-auth-token', async () => {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      fs.unlinkSync(TOKEN_FILE)
+      console.log('[Main] Auth token cleared')
+    }
+  } catch (error) {
+    console.error('[Main] Failed to clear auth token:', error)
+  }
+})
 ipcMain.handle('get-app-version', () => app.getVersion())

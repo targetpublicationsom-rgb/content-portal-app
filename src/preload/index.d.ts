@@ -40,6 +40,10 @@ interface API {
       }
     ) => void
   ) => () => void
+  // Auth token management
+  storeAuthToken: (token: string) => Promise<void>
+  getAuthToken: () => Promise<string | null>
+  clearAuthToken: () => Promise<void>
 }
 
 declare global {

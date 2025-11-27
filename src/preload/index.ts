@@ -44,7 +44,17 @@ const api = {
     ipcRenderer.invoke('read-log-file', filePath),
 
   // Get app version
-  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version')
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+
+  // Auth token management
+  storeAuthToken: (token: string): Promise<void> =>
+    ipcRenderer.invoke('store-auth-token', token),
+
+  getAuthToken: (): Promise<string | null> =>
+    ipcRenderer.invoke('get-auth-token'),
+
+  clearAuthToken: (): Promise<void> =>
+    ipcRenderer.invoke('clear-auth-token')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

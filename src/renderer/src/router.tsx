@@ -3,12 +3,22 @@ import Layout from './layouts/Layout'
 import Dashboard from './components/Dashboard'
 import Jobs from './components/Jobs'
 import JobDetails from './components/JobDetails'
+import Login from './components/Login'
+import ProtectedRoute from './components/ProtectedRoute'
 
 // Use HashRouter for better Electron compatibility
 export const router = createHashRouter([
   {
+    path: '/login',
+    element: <Login />
+  },
+  {
     path: '/',
-    element: <Layout />,
+    element: (
+      <ProtectedRoute>
+        <Layout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         path: '/',
@@ -22,6 +32,10 @@ export const router = createHashRouter([
   },
   {
     path: '/jobs/:jobId',
-    element: <JobDetails />
+    element: (
+      <ProtectedRoute>
+        <JobDetails />
+      </ProtectedRoute>
+    )
   }
 ])
