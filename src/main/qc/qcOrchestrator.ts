@@ -35,6 +35,10 @@ class QCOrchestrator extends EventEmitter {
   private isInitialized = false
   private pollingInterval: NodeJS.Timeout | null = null
   private mainWindow: BrowserWindow | null = null
+  private jobQueue: Array<{ filePath: string; filename: string }> = []
+  private activeJobs = 0
+  private readonly MAX_CONCURRENT_JOBS = 3
+  private isProcessingQueue = false
 
   async initialize(mainWindow: BrowserWindow): Promise<void> {
     if (this.isInitialized) {
@@ -108,7 +112,7 @@ class QCOrchestrator extends EventEmitter {
 
     watcher.on('file-detected', async (event: WatchEvent) => {
       console.log(`[QCOrchestrator] File detected: ${event.filename}`)
-      await this.processNewFile(event.filePath, event.filename)
+      this.enqueueJob(event.filePath, event.filename)
     })
 
     watcher.on('error', (error: string) => {
@@ -138,6 +142,77 @@ class QCOrchestrator extends EventEmitter {
     converter.on('queue-update', (queueLength: number) => {
       this.emitToRenderer('qc:queue-update', { queueLength })
     })
+  }
+
+  private enqueueJob(filePath: string, filename: string): void {
+    this.jobQueue.push({ filePath, filename })
+    console.log(
+      `[QCOrchestrator] Job queued: ${filename} (Queue: ${this.jobQueue.length}, Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS})`
+    )
+
+    this.emitToRenderer('qc:queue-status', {
+      queueLength: this.jobQueue.length,
+      activeJobs: this.activeJobs,
+      maxConcurrent: this.MAX_CONCURRENT_JOBS
+    })
+
+    this.processQueue()
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue) {
+      return
+    }
+
+    this.isProcessingQueue = true
+
+    while (this.jobQueue.length > 0 && this.activeJobs < this.MAX_CONCURRENT_JOBS) {
+      const job = this.jobQueue.shift()
+      if (!job) continue
+
+      this.activeJobs++
+      console.log(
+        `[QCOrchestrator] Starting job: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+      )
+
+      this.emitToRenderer('qc:queue-status', {
+        queueLength: this.jobQueue.length,
+        activeJobs: this.activeJobs,
+        maxConcurrent: this.MAX_CONCURRENT_JOBS
+      })
+
+      // Process job without awaiting (parallel execution)
+      this.processNewFile(job.filePath, job.filename).finally(() => {
+        this.activeJobs--
+        console.log(
+          `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+        )
+
+        this.emitToRenderer('qc:queue-status', {
+          queueLength: this.jobQueue.length,
+          activeJobs: this.activeJobs,
+          maxConcurrent: this.MAX_CONCURRENT_JOBS
+        })
+
+        // Try to process next job
+        this.isProcessingQueue = false
+        this.processQueue()
+      })
+    }
+
+    this.isProcessingQueue = false
+  }
+
+  private getQueueStatus(): {
+    queueLength: number
+    activeJobs: number
+    maxConcurrent: number
+  } {
+    return {
+      queueLength: this.jobQueue.length,
+      activeJobs: this.activeJobs,
+      maxConcurrent: this.MAX_CONCURRENT_JOBS
+    }
   }
 
   private async processNewFile(filePath: string, filename: string): Promise<void> {
@@ -435,63 +510,18 @@ class QCOrchestrator extends EventEmitter {
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
 
     // Clear external QC ID and reset status
-    updateQCRecord(qcId, { 
+    updateQCRecord(qcId, {
       external_qc_id: null,
-      error_message: null, 
+      error_message: null,
       retry_count: 0,
       submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
     })
-    
+
     updateQCStatus(qcId, 'QUEUED')
     this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
 
-    // Get lock base path
-    const lockBasePath = getLockBasePath()
-    
-    try {
-      // Acquire lock before processing
-      const lockResult = acquireLock(lockBasePath, record.qc_id, record.file_path)
-      if (!lockResult.success) {
-        const errorMsg = lockResult.error || `File is locked by ${lockResult.lockedBy}`
-        console.log(`[QCOrchestrator] Could not acquire lock for retry: ${errorMsg}`)
-        updateQCStatus(record.qc_id, 'FAILED', errorMsg)
-        this.emitToRenderer('qc:status-update', { qcId, status: 'FAILED', error: errorMsg })
-        return
-      }
-
-      // Get output paths
-      const paths = getQCOutputPaths(record.qc_id, record.original_name)
-      
-      // Determine PDF path - use existing if available
-      let pdfPath = record.pdf_path
-
-      // If no PDF exists or source is DOCX, convert again
-      if (!pdfPath || !fs.existsSync(pdfPath)) {
-        updateQCStatus(record.qc_id, 'CONVERTING')
-        this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING' })
-        
-        pdfPath = await this.convertToPdf(record.file_path, paths.pdfPath)
-        updateQCPdfPath(record.qc_id, pdfPath)
-      } else {
-        console.log(`[QCOrchestrator] Using existing PDF for retry: ${pdfPath}`)
-      }
-
-      // Submit to external API
-      await this.submitToExternalAPI(record.qc_id, pdfPath, record.original_name)
-
-      // Release lock after successful submission
-      releaseLock(lockBasePath, record.file_path)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`[QCOrchestrator] Retry failed for ${record.original_name}:`, error)
-
-      // Release lock on error
-      releaseLock(lockBasePath, record.file_path)
-
-      updateQCStatus(record.qc_id, 'FAILED', errorMessage)
-      this.emitToRenderer('qc:status-update', { qcId, status: 'FAILED', error: errorMessage })
-      notifyQCFailed(record.original_name, errorMessage)
-    }
+    // Enqueue the retry job (respects concurrency limits)
+    this.enqueueJob(record.file_path, record.original_name)
   }
 }
 

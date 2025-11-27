@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
-import { FileCheck, FileWarning, Clock, CheckCircle2, Loader2, Play, Square } from 'lucide-react'
+import { FileCheck, Clock, CheckCircle2, Loader2, Play, Square } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCStats } from '../../types/qc.types'
 
@@ -171,9 +171,9 @@ export default function QCDashboard(): React.JSX.Element {
         </Card>
 
         <Card>
-          <CardHeader className=\"flex flex-row items-center justify-between space-y-0 pb-2\">
-            <CardTitle className=\"text-sm font-medium\">Avg Processing Time</CardTitle>
-            <Clock className=\"h-4 w-4 text-muted-foreground\" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2\">
+            <CardTitle className="text-sm font-medium\">Avg Processing Time</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground\" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">

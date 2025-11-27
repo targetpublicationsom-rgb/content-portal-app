@@ -1,6 +1,7 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import { EventEmitter } from 'events'
+import { exec } from 'child_process'
 import winax from 'winax'
 
 // Word COM objects don't have TypeScript definitions
@@ -47,12 +48,56 @@ class WordConverter extends EventEmitter {
 
     try {
       console.log('[WordConverter] Shutting down Word instance...')
-      this.wordApp.Quit()
+
+      // Close all open documents first
+      try {
+        if (this.wordApp.Documents && this.wordApp.Documents.Count > 0) {
+          this.wordApp.Documents.Close(false)
+        }
+      } catch (docError) {
+        console.warn('[WordConverter] Error closing documents:', docError)
+      }
+
+      // Quit Word application
+      try {
+        if (typeof this.wordApp.Quit === 'function') {
+          this.wordApp.Quit()
+        } else if (this.wordApp.Quit) {
+          // Try calling it directly if it's a COM method
+          this.wordApp.Quit(0) // wdDoNotSaveChanges = 0
+        }
+      } catch (quitError) {
+        console.warn('[WordConverter] Error calling Quit:', quitError)
+        // Force kill Word processes as fallback
+        this.forceKillWord()
+      }
+
+      // Release the COM object
       this.wordApp = null
       this.isInitialized = false
+
       console.log('[WordConverter] Word instance shut down')
     } catch (error) {
       console.error('[WordConverter] Error shutting down Word:', error)
+      // Force cleanup even on error
+      this.wordApp = null
+      this.isInitialized = false
+      this.forceKillWord()
+    }
+  }
+
+  private forceKillWord(): void {
+    try {
+      console.log('[WordConverter] Force killing Word processes...')
+      exec('taskkill /F /IM WINWORD.EXE', (error) => {
+        if (error && !error.message.includes('not found')) {
+          console.warn('[WordConverter] Error force killing Word:', error.message)
+        } else {
+          console.log('[WordConverter] Word processes terminated')
+        }
+      })
+    } catch (error) {
+      console.warn('[WordConverter] Could not force kill Word:', error)
     }
   }
 
