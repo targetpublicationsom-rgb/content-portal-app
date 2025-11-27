@@ -10,7 +10,7 @@ export function initializePandoc(): void {
   // Try bundled pandoc in app resources first
   const appPath = app.getAppPath()
   const bundledPandocPath = path.join(appPath, 'tools', 'pandoc.exe')
-  
+
   if (fs.existsSync(bundledPandocPath)) {
     pandocPath = bundledPandocPath
     console.log(`[PandocConverter] Using bundled pandoc: ${pandocPath}`)
@@ -20,7 +20,7 @@ export function initializePandoc(): void {
   // Try user data directory (for production builds)
   const userDataPath = app.getPath('userData')
   const userDataPandocPath = path.join(userDataPath, 'tools', 'pandoc', 'pandoc.exe')
-  
+
   if (fs.existsSync(userDataPandocPath)) {
     pandocPath = userDataPandocPath
     console.log(`[PandocConverter] Using user data pandoc: ${pandocPath}`)
@@ -56,22 +56,10 @@ export async function convertMdToDocx(mdPath: string, docxPath?: string): Promis
   console.log(`[PandocConverter] Converting ${path.basename(mdPath)} to DOCX...`)
 
   return new Promise((resolve, reject) => {
-    const args = [
-      mdPath,
-      '-o',
-      outputPath,
-      '--from=markdown',
-      '--to=docx',
-      '--standalone',
-      '--reference-doc=' // Can add custom template here if needed
-    ]
+    // Build command string with properly quoted paths for shell execution
+    const command = `"${pandocPath}" "${mdPath}" -o "${outputPath}" --from=markdown --to=docx --standalone`
 
-    // Remove empty reference-doc if no template
-    if (args[args.length - 1] === '--reference-doc=') {
-      args.pop()
-    }
-
-    const pandocProcess = spawn(pandocPath!, args, {
+    const pandocProcess = spawn(command, [], {
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true
     })

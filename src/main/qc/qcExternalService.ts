@@ -3,24 +3,19 @@ import * as fs from 'fs'
 import FormData from 'form-data'
 
 export interface QCSubmitResponse {
-  qc_id: string
-  status: 'queued' | 'processing'
-  message?: string
+  success: boolean
+  job_id: string
+  status: 'PENDING' | 'PROCESSING'
+  message: string
+  timestamp: string
 }
 
 export interface QCStatusResponse {
-  qc_id: string
-  status: 'queued' | 'processing' | 'completed' | 'failed'
-  progress?: number
-  message?: string
-}
-
-export interface QCReportResponse {
-  qc_id: string
-  score: number
-  issues_found: number
-  report_md: string
-  completed_at: string
+  job_id: string
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  result?: string // Markdown report when COMPLETED
+  created_at: string
+  updated_at: string
 }
 
 class QCExternalService {
@@ -36,7 +31,7 @@ class QCExternalService {
       baseURL: apiUrl,
       timeout: 120000, // 2 minutes for file uploads
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        'x-api-key': `${apiKey}`,
         'Content-Type': 'application/json'
       }
     })
@@ -74,16 +69,19 @@ class QCExternalService {
     try {
       const formData = new FormData()
       formData.append('file', fs.createReadStream(pdfPath))
-      formData.append('filename', filename)
 
-      const response = await this.client.post<QCSubmitResponse>('/qc/submit', formData, {
+      const response = await this.client.post<QCSubmitResponse>('/qc/process-pdf', formData, {
         headers: {
           ...formData.getHeaders(),
           Authorization: `Bearer ${this.apiKey}`
         }
       })
 
-      console.log(`[QCExternalService] Submitted successfully. QC ID: ${response.data.qc_id}`)
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to submit PDF')
+      }
+
+      console.log(`[QCExternalService] Submitted successfully. Job ID: ${response.data.job_id}`)
       return response.data
     } catch (error) {
       this.handleError('Failed to submit PDF for QC', error)
@@ -91,33 +89,16 @@ class QCExternalService {
     }
   }
 
-  async getQCStatus(externalQcId: string): Promise<QCStatusResponse> {
+  async getQCStatus(jobId: string): Promise<QCStatusResponse> {
     if (!this.client) {
       throw new Error('Service not configured. Call configure() first.')
     }
 
     try {
-      const response = await this.client.get<QCStatusResponse>(`/qc/status/${externalQcId}`)
+      const response = await this.client.get<QCStatusResponse>(`/qc/jobs/${jobId}`)
       return response.data
     } catch (error) {
       this.handleError('Failed to get QC status', error)
-      throw error
-    }
-  }
-
-  async getQCReport(externalQcId: string): Promise<QCReportResponse> {
-    if (!this.client) {
-      throw new Error('Service not configured. Call configure() first.')
-    }
-
-    console.log(`[QCExternalService] Fetching report for QC ID: ${externalQcId}`)
-
-    try {
-      const response = await this.client.get<QCReportResponse>(`/qc/report/${externalQcId}`)
-      console.log(`[QCExternalService] Report fetched successfully (Score: ${response.data.score})`)
-      return response.data
-    } catch (error) {
-      this.handleError('Failed to get QC report', error)
       throw error
     }
   }

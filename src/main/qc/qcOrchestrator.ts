@@ -29,12 +29,7 @@ import {
   notifyQCFailed,
   notifyServiceOffline
 } from './qcNotifications'
-import {
-  acquireLock,
-  releaseLock,
-  checkLock,
-  cleanStaleLocks
-} from './qcLockManager'
+import { acquireLock, releaseLock, checkLock, cleanStaleLocks } from './qcLockManager'
 import type { WatchEvent } from './qcWatcher'
 import type { QCRecord } from '../../shared/qc.types'
 
@@ -55,7 +50,7 @@ class QCOrchestrator extends EventEmitter {
     try {
       // Initialize config FIRST (needed for database path)
       initializeQCConfig()
-      
+
       // Initialize all modules
       initializeQCDatabase()
       initializePandoc()
@@ -158,9 +153,7 @@ class QCOrchestrator extends EventEmitter {
       // Check if file is currently locked by another user
       const existingLock = checkLock(lockBasePath, filePath)
       if (existingLock) {
-        console.log(
-          `[QCOrchestrator] File is locked by ${existingLock.processedBy}: ${filename}`
-        )
+        console.log(`[QCOrchestrator] File is locked by ${existingLock.processedBy}: ${filename}`)
         return
       }
 
@@ -174,9 +167,18 @@ class QCOrchestrator extends EventEmitter {
           )
           return
         }
-        
+
         // Skip if currently being processed (not FAILED)
-        if (['QUEUED', 'CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
+        if (
+          [
+            'QUEUED',
+            'CONVERTING',
+            'SUBMITTING',
+            'PROCESSING',
+            'DOWNLOADING',
+            'CONVERTING_REPORT'
+          ].includes(existingRecord.status)
+        ) {
           const timeSinceSubmit =
             new Date().getTime() - new Date(existingRecord.submitted_at).getTime()
           // If stuck for more than 10 minutes, mark as FAILED
@@ -189,16 +191,18 @@ class QCOrchestrator extends EventEmitter {
             console.log(
               `[QCOrchestrator] Marking stuck file as FAILED (${existingRecord.status} for ${Math.round(timeSinceSubmit / 1000 / 60)} min): ${filename}`
             )
-            updateQCStatus(existingRecord.qc_id, 'FAILED', `Stuck in ${existingRecord.status} state for more than 10 minutes`)
+            updateQCStatus(
+              existingRecord.qc_id,
+              'FAILED',
+              `Stuck in ${existingRecord.status} state for more than 10 minutes`
+            )
             return
           }
         }
-        
+
         // Skip FAILED files too - they need explicit retry via button
         if (existingRecord.status === 'FAILED') {
-          console.log(
-            `[QCOrchestrator] Skipping failed file - use Retry button: ${filename}`
-          )
+          console.log(`[QCOrchestrator] Skipping failed file - use Retry button: ${filename}`)
           return
         }
       }
@@ -276,13 +280,13 @@ class QCOrchestrator extends EventEmitter {
     this.emitToRenderer('qc:status-update', { qcId, status: 'SUBMITTING' })
 
     const response = await service.submitPdfForQC(pdfPath, filename)
-    updateQCExternalId(qcId, response.qc_id)
+    updateQCExternalId(qcId, response.job_id)
     updateQCStatus(qcId, 'PROCESSING')
     notifyQCSubmitted(filename)
     this.emitToRenderer('qc:status-update', {
       qcId,
       status: 'PROCESSING',
-      externalQcId: response.qc_id
+      externalQcId: response.job_id
     })
   }
 
@@ -317,15 +321,15 @@ class QCOrchestrator extends EventEmitter {
       const service = getQCExternalService()
       const status = await service.getQCStatus(record.external_qc_id)
 
-      if (status.status === 'completed') {
-        await this.handleQCComplete(record)
-      } else if (status.status === 'failed') {
-        updateQCStatus(record.qc_id, 'FAILED', status.message || 'QC failed')
-        notifyQCFailed(record.original_name, status.message || 'QC failed')
+      if (status.status === 'COMPLETED' && status.result) {
+        await this.handleQCComplete(record, status.result)
+      } else if (status.status === 'FAILED') {
+        updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
+        notifyQCFailed(record.original_name, 'QC processing failed')
         this.emitToRenderer('qc:status-update', {
           qcId: record.qc_id,
           status: 'FAILED',
-          error: status.message
+          error: 'QC processing failed'
         })
       }
     } catch (error) {
@@ -338,23 +342,15 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
-  private async handleQCComplete(record: QCRecord): Promise<void> {
-    if (!record.external_qc_id) {
-      return
-    }
-
+  private async handleQCComplete(record: QCRecord, reportMarkdown: string): Promise<void> {
     try {
-      const service = getQCExternalService()
       const paths = getQCOutputPaths(record.qc_id, record.original_name)
 
-      // Download report
+      // Save MD report
       updateQCStatus(record.qc_id, 'DOWNLOADING')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'DOWNLOADING' })
 
-      const report = await service.getQCReport(record.external_qc_id)
-
-      // Save MD report
-      fs.writeFileSync(paths.reportMdPath, report.report_md, 'utf-8')
+      fs.writeFileSync(paths.reportMdPath, reportMarkdown, 'utf-8')
 
       // Convert MD to DOCX
       updateQCStatus(record.qc_id, 'CONVERTING_REPORT')
@@ -366,26 +362,41 @@ class QCOrchestrator extends EventEmitter {
         console.warn('[QCOrchestrator] Pandoc not available, skipping DOCX conversion')
       }
 
+      // Parse score and issues from markdown (extract from JSON if present)
+      let score = 0
+      let issuesFound = 0
+
+      try {
+        // Try to extract JSON from markdown
+        const jsonMatch = reportMarkdown.match(/```json\s*({[\s\S]*?})\s*```/)
+        if (jsonMatch) {
+          const jsonData = JSON.parse(jsonMatch[1])
+          issuesFound = jsonData.findings?.length || 0
+
+          // Calculate simple score based on severity
+          const severeIssues =
+            jsonData.findings?.filter((f: any) => f.severity === 'Medium' || f.severity === 'High')
+              .length || 0
+          score = Math.max(0, 100 - severeIssues * 10 - (issuesFound - severeIssues) * 5)
+        }
+      } catch (parseError) {
+        console.warn('[QCOrchestrator] Could not parse score from report:', parseError)
+      }
+
       // Update record with report data
-      updateQCReport(
-        record.qc_id,
-        paths.reportMdPath,
-        paths.reportDocxPath,
-        report.score,
-        report.issues_found
-      )
+      updateQCReport(record.qc_id, paths.reportMdPath, paths.reportDocxPath, score, issuesFound)
 
       updateQCStatus(record.qc_id, 'COMPLETED')
-      notifyQCCompleted(record.original_name, report.score)
+      notifyQCCompleted(record.original_name, score)
       this.emitToRenderer('qc:status-update', {
         qcId: record.qc_id,
         status: 'COMPLETED',
-        score: report.score,
-        issuesFound: report.issues_found
+        score: score,
+        issuesFound: issuesFound
       })
 
       console.log(
-        `[QCOrchestrator] QC complete for ${record.original_name} (Score: ${report.score})`
+        `[QCOrchestrator] QC complete for ${record.original_name} (Score: ${score}, Issues: ${issuesFound})`
       )
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -413,10 +424,10 @@ class QCOrchestrator extends EventEmitter {
 
   async restartWatcher(): Promise<void> {
     stopQCWatcher()
-    
+
     // Reload config from .env file
     initializeQCConfig()
-    
+
     // Reinitialize database in case path changed
     reinitializeQCDatabase()
 
@@ -434,11 +445,11 @@ class QCOrchestrator extends EventEmitter {
     }
 
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
-    
+
     // Reset the record to QUEUED status
     updateQCStatus(qcId, 'QUEUED')
     updateQCRecord(qcId, { error_message: null, retry_count: 0 })
-    
+
     // Process the file again
     await this.processNewFile(record.file_path, record.original_name)
   }
