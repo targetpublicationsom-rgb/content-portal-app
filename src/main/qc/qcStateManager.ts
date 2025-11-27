@@ -151,7 +151,7 @@ export function updateQCReport(
   qcId: string,
   reportMdPath: string,
   reportDocxPath: string,
-  qcScore: number,
+  qcScore: number | null,
   issuesFound: number
 ): void {
   if (!db) throw new Error('Database not initialized')

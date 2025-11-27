@@ -156,7 +156,6 @@ export default function QCFileList(): React.JSX.Element {
               <TableRow>
                 <TableHead>Filename</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Score</TableHead>
                 <TableHead>Issues</TableHead>
                 <TableHead>Processed By</TableHead>
                 <TableHead>Submitted</TableHead>
@@ -166,7 +165,7 @@ export default function QCFileList(): React.JSX.Element {
             <TableBody>
               {records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No QC records found
                   </TableCell>
                 </TableRow>
@@ -175,23 +174,6 @@ export default function QCFileList(): React.JSX.Element {
                   <TableRow key={record.qc_id}>
                     <TableCell className="font-medium">{record.original_name}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>
-                      {record.qc_score !== null ? (
-                        <span
-                          className={
-                            record.qc_score >= 80
-                              ? 'text-green-600 font-semibold'
-                              : record.qc_score >= 60
-                                ? 'text-yellow-600 font-semibold'
-                                : 'text-red-600 font-semibold'
-                          }
-                        >
-                          {record.qc_score}/100
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
                     <TableCell>
                       {record.issues_found !== null ? record.issues_found : '—'}
                     </TableCell>

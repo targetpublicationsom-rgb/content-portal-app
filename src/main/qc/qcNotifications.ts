@@ -24,10 +24,9 @@ export function notifyQCProcessing(filename: string): void {
   showNotification('QC In Progress', `Analyzing ${filename}...`, 'info')
 }
 
-export function notifyQCCompleted(filename: string, score: number): void {
-  const message = `Score: ${score}/100 - Report ready`
-  const icon = score >= 70 ? 'success' : 'warning'
-  showNotification(`QC Complete: ${filename}`, message, icon)
+export function notifyQCCompleted(filename: string, score: number | null): void {
+  const message = 'Report ready'
+  showNotification(`QC Complete: ${filename}`, message, 'success')
 }
 
 export function notifyQCFailed(filename: string, error: string): void {

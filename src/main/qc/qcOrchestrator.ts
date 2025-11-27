@@ -23,8 +23,6 @@ import {
 import {
   initializeQCNotifications,
   notifyQCStarted,
-  notifyConversionComplete,
-  notifyQCSubmitted,
   notifyQCCompleted,
   notifyQCFailed,
   notifyServiceOffline
@@ -233,7 +231,6 @@ class QCOrchestrator extends EventEmitter {
 
       const pdfPath = await this.convertToPdf(filePath, paths.pdfPath)
       updateQCPdfPath(record.qc_id, pdfPath)
-      notifyConversionComplete(filename)
 
       // Step 2: Submit to external API
       await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
@@ -282,7 +279,6 @@ class QCOrchestrator extends EventEmitter {
     const response = await service.submitPdfForQC(pdfPath, filename)
     updateQCExternalId(qcId, response.job_id)
     updateQCStatus(qcId, 'PROCESSING')
-    notifyQCSubmitted(filename)
     this.emitToRenderer('qc:status-update', {
       qcId,
       status: 'PROCESSING',
@@ -362,8 +358,7 @@ class QCOrchestrator extends EventEmitter {
         console.warn('[QCOrchestrator] Pandoc not available, skipping DOCX conversion')
       }
 
-      // Parse score and issues from markdown (extract from JSON if present)
-      let score = 0
+      // Parse issues count from markdown (extract from JSON if present)
       let issuesFound = 0
 
       try {
@@ -372,31 +367,24 @@ class QCOrchestrator extends EventEmitter {
         if (jsonMatch) {
           const jsonData = JSON.parse(jsonMatch[1])
           issuesFound = jsonData.findings?.length || 0
-
-          // Calculate simple score based on severity
-          const severeIssues =
-            jsonData.findings?.filter((f: any) => f.severity === 'Medium' || f.severity === 'High')
-              .length || 0
-          score = Math.max(0, 100 - severeIssues * 10 - (issuesFound - severeIssues) * 5)
         }
       } catch (parseError) {
-        console.warn('[QCOrchestrator] Could not parse score from report:', parseError)
+        console.warn('[QCOrchestrator] Could not parse issues from report:', parseError)
       }
 
-      // Update record with report data
-      updateQCReport(record.qc_id, paths.reportMdPath, paths.reportDocxPath, score, issuesFound)
+      // Update record with report data (no score)
+      updateQCReport(record.qc_id, paths.reportMdPath, paths.reportDocxPath, null, issuesFound)
 
       updateQCStatus(record.qc_id, 'COMPLETED')
-      notifyQCCompleted(record.original_name, score)
+      notifyQCCompleted(record.original_name, null)
       this.emitToRenderer('qc:status-update', {
         qcId: record.qc_id,
         status: 'COMPLETED',
-        score: score,
         issuesFound: issuesFound
       })
 
       console.log(
-        `[QCOrchestrator] QC complete for ${record.original_name} (Score: ${score}, Issues: ${issuesFound})`
+        `[QCOrchestrator] QC complete for ${record.original_name} (Issues: ${issuesFound})`
       )
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -446,12 +434,64 @@ class QCOrchestrator extends EventEmitter {
 
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
 
-    // Reset the record to QUEUED status
+    // Clear external QC ID and reset status
+    updateQCRecord(qcId, { 
+      external_qc_id: null,
+      error_message: null, 
+      retry_count: 0,
+      submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
+    })
+    
     updateQCStatus(qcId, 'QUEUED')
-    updateQCRecord(qcId, { error_message: null, retry_count: 0 })
+    this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
 
-    // Process the file again
-    await this.processNewFile(record.file_path, record.original_name)
+    // Get lock base path
+    const lockBasePath = getLockBasePath()
+    
+    try {
+      // Acquire lock before processing
+      const lockResult = acquireLock(lockBasePath, record.qc_id, record.file_path)
+      if (!lockResult.success) {
+        const errorMsg = lockResult.error || `File is locked by ${lockResult.lockedBy}`
+        console.log(`[QCOrchestrator] Could not acquire lock for retry: ${errorMsg}`)
+        updateQCStatus(record.qc_id, 'FAILED', errorMsg)
+        this.emitToRenderer('qc:status-update', { qcId, status: 'FAILED', error: errorMsg })
+        return
+      }
+
+      // Get output paths
+      const paths = getQCOutputPaths(record.qc_id, record.original_name)
+      
+      // Determine PDF path - use existing if available
+      let pdfPath = record.pdf_path
+
+      // If no PDF exists or source is DOCX, convert again
+      if (!pdfPath || !fs.existsSync(pdfPath)) {
+        updateQCStatus(record.qc_id, 'CONVERTING')
+        this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING' })
+        
+        pdfPath = await this.convertToPdf(record.file_path, paths.pdfPath)
+        updateQCPdfPath(record.qc_id, pdfPath)
+      } else {
+        console.log(`[QCOrchestrator] Using existing PDF for retry: ${pdfPath}`)
+      }
+
+      // Submit to external API
+      await this.submitToExternalAPI(record.qc_id, pdfPath, record.original_name)
+
+      // Release lock after successful submission
+      releaseLock(lockBasePath, record.file_path)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[QCOrchestrator] Retry failed for ${record.original_name}:`, error)
+
+      // Release lock on error
+      releaseLock(lockBasePath, record.file_path)
+
+      updateQCStatus(record.qc_id, 'FAILED', errorMessage)
+      this.emitToRenderer('qc:status-update', { qcId, status: 'FAILED', error: errorMessage })
+      notifyQCFailed(record.original_name, errorMessage)
+    }
   }
 }
 
