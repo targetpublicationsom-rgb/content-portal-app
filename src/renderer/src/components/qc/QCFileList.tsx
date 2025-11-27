@@ -80,11 +80,18 @@ export default function QCFileList(): React.JSX.Element {
 
   const handleRetry = async (qcId: string) => {
     try {
+      // Immediately update the UI to show QUEUED status
+      setRecords((prev) =>
+        prev.map((r) => (r.qc_id === qcId ? { ...r, status: 'QUEUED' as QCStatus } : r))
+      )
+      
+      // Call retry in background
       await qcService.retryRecord(qcId)
-      setTimeout(() => loadRecords(), 500)
     } catch (err) {
       console.error('Failed to retry record:', err)
       setError('Failed to retry record')
+      // Reload on error to get correct status
+      loadRecords()
     }
   }
 
