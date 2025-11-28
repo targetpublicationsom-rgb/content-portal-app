@@ -82,6 +82,9 @@ interface API {
     onQueueUpdate: (callback: (event: any, data: any) => void) => () => void
     onError: (callback: (event: any, data: any) => void) => () => void
   }
+  numbering: {
+    validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) => Promise<any>
+  }
   shell: {
     openPath: (path: string) => Promise<string>
   }

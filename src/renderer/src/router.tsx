@@ -7,6 +7,8 @@ import Login from './components/Login'
 import ProtectedRoute from './components/ProtectedRoute'
 import QCDashboard from './components/qc/QCDashboard'
 import QCFileList from './components/qc/QCFileList'
+import NumberingChecker from './components/NumberingChecker'
+
 
 // Use HashRouter for better Electron compatibility
 export const router = createHashRouter([
@@ -37,6 +39,10 @@ export const router = createHashRouter([
       {
         path: '/qc/files',
         element: <QCFileList />
+      },
+      {
+        path: '/numbering-checker',
+        element: <NumberingChecker />
       }
     ]
   },

@@ -30,6 +30,8 @@ import {
 } from './serverManager'
 import { initializeQCOrchestrator, shutdownQCOrchestrator } from './qc/qcOrchestrator'
 import { registerQCIpcHandlers, unregisterQCIpcHandlers } from './qc/qcIpcHandlers'
+import { registerNumberingIpcHandlers, unregisterNumberingIpcHandlers } from './numberingIpcHandlers'
+
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -541,6 +543,11 @@ app.whenReady().then(async () => {
   registerQCIpcHandlers()
   console.log('[Main] QC IPC handlers registered')
 
+  // Register Numbering Checker IPC handlers
+  registerNumberingIpcHandlers()
+  console.log('[Main] Numbering Checker IPC handlers registered')
+
+
   // Then create window
   createWindow()
 
@@ -632,6 +639,10 @@ app.on('will-quit', async () => {
 
   // Unregister QC IPC handlers
   unregisterQCIpcHandlers()
+
+  // Unregister Numbering Checker IPC handlers
+  unregisterNumberingIpcHandlers()
+
 
   // Ensure server is stopped
   setQuitting(true)
