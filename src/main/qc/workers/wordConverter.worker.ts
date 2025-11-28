@@ -137,32 +137,73 @@ async function convertDocxToPdf(
         } as WorkerResponse)
       }
 
-      // PowerShell script for Word COM automation
+      // PowerShell script for Word COM automation with image compression
       const psScript = `
 $ErrorActionPreference = 'Stop'
 
 try {
-    # Create Word COM object
+    # Create Word COM object with minimal memory footprint
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
     $word.DisplayAlerts = 0  # wdAlertsNone
+    $word.ScreenUpdating = $false  # Disable screen updates to save memory
     
-    # Open document
-    $doc = $word.Documents.Open("${absDocxPath.replace(/\\/g, '\\\\')}", $false, $true)
+    # Open document in read-only mode to reduce memory usage
+    $doc = $word.Documents.Open("${absDocxPath.replace(/\\/g, '\\\\')}", $false, $true, $false)
     
-    # Save as PDF (format 17 = wdFormatPDF)
-    $doc.SaveAs("${absPdfPath.replace(/\\/g, '\\\\')}", 17)
-    
-    # Close document
-    $doc.Close($false)
-    
-    # Quit Word
-    $word.Quit()
-    
-    Write-Host "SUCCESS"
+    try {
+        # Compress images in the document to reduce memory usage
+        # This is critical for large files with many images
+        
+        # Compress all inline shapes (images)
+        if ($doc.InlineShapes.Count -gt 0) {
+            Write-Host "Compressing $($doc.InlineShapes.Count) images..."
+            foreach ($shape in $doc.InlineShapes) {
+                # Set image compression for 150 DPI equivalent quality
+                if ($shape.Type -eq 13) {  # 13 = Picture type
+                    try {
+                        $shape.PictureFormat.Compression = 2  # wdCompressionMedium (150 DPI)
+                    } catch {
+                        # Continue if compression fails for specific image
+                    }
+                }
+            }
+        }
+        
+        # Also compress shapes that contain images
+        if ($doc.Shapes.Count -gt 0) {
+            foreach ($shape in $doc.Shapes) {
+                try {
+                    if ($shape.Type -eq 13) {  # Picture type
+                        $shape.PictureFormat.Compression = 2
+                    }
+                } catch {
+                    # Continue if compression fails
+                }
+            }
+        }
+        
+        # Export as PDF with optimized settings (skips saving to avoid locking issues)
+        # Format 17 = wdFormatPDF
+        $doc.ExportAsFixedFormat("${absPdfPath.replace(/\\/g, '\\\\')}", 17, $false, 0, 0, 0, 0, 7, $true)
+        
+        Write-Host "SUCCESS"
+    } finally {
+        # Close document without saving (PDF export doesn't require save)
+        $doc.Close($false)
+    }
 } catch {
     Write-Error "Conversion failed: $_"
     exit 1
+} finally {
+    # Clean up Word to free all resources
+    if ($word -ne $null) {
+        $word.Quit()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+        Remove-Variable word -ErrorAction SilentlyContinue
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+    }
 }
 `
 
@@ -243,6 +284,7 @@ if (parentPort) {
 
         default:
           throw new Error(`Unknown message type: ${message.type}`)
+           
       }
     } catch (error: unknown) {
       console.error('[WordWorker] Error processing message:', error)
