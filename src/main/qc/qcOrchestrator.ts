@@ -41,7 +41,7 @@ class QCOrchestrator extends EventEmitter {
     recordId?: string | null
   }> = []
   private activeJobs = 0
-  private readonly MAX_CONCURRENT_JOBS = 1
+  private MAX_CONCURRENT_JOBS = 1
   private isProcessingQueue = false
   private workerPool: WorkerPool | null = null
   private processingFiles: Set<string> = new Set() // Track files currently being processed
@@ -210,30 +210,14 @@ class QCOrchestrator extends EventEmitter {
 
     this.isProcessingQueue = true
 
-    while (this.jobQueue.length > 0 && this.activeJobs < this.MAX_CONCURRENT_JOBS) {
-      const job = this.jobQueue.shift()
-      if (!job) continue
+    try {
+      while (this.jobQueue.length > 0 && this.activeJobs < this.MAX_CONCURRENT_JOBS) {
+        const job = this.jobQueue.shift()
+        if (!job) continue
 
-      this.activeJobs++
-      console.log(
-        `[QCOrchestrator] Starting job: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
-      )
-
-      this.emitToRenderer('qc:queue-status', {
-        queueLength: this.jobQueue.length,
-        activeJobs: this.activeJobs,
-        maxConcurrent: this.MAX_CONCURRENT_JOBS
-      })
-
-      // Process job without awaiting (parallel execution)
-      this.processNewFile(job.filePath, job.filename, job.isRetry, job.recordId).finally(() => {
-        this.activeJobs--
-        
-        // Remove from processing set when job completes
-        this.processingFiles.delete(job.filePath)
-        
+        this.activeJobs++
         console.log(
-          `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+          `[QCOrchestrator] Starting job: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
         )
 
         this.emitToRenderer('qc:queue-status', {
@@ -242,13 +226,59 @@ class QCOrchestrator extends EventEmitter {
           maxConcurrent: this.MAX_CONCURRENT_JOBS
         })
 
-        // Try to process next job
-        this.isProcessingQueue = false
-        this.processQueue()
-      })
+        // Await job completion before processing next (strict serialization)
+        try {
+          await this.processNewFile(job.filePath, job.filename, job.isRetry, job.recordId)
+        } catch (error) {
+          console.error(`[QCOrchestrator] Error processing job: ${job.filename}`, error)
+        } finally {
+          this.activeJobs--
+          this.processingFiles.delete(job.filePath)
+
+          console.log(
+            `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+          )
+
+          this.emitToRenderer('qc:queue-status', {
+            queueLength: this.jobQueue.length,
+            activeJobs: this.activeJobs,
+            maxConcurrent: this.MAX_CONCURRENT_JOBS
+          })
+        }
+      }
+    } finally {
+      this.isProcessingQueue = false
+    }
+  }
+
+  private async waitForJobCompletion(qcId: string, filename: string): Promise<void> {
+    // Wait until the job reaches COMPLETED or FAILED status
+    // Polls the database until terminal state is reached
+    const maxWaitTime = 15 * 60 * 1000 // 15 minutes max
+    const pollInterval = 2000 // 2 seconds
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const record = await getQCRecord(qcId)
+      if (!record) {
+        throw new Error('Record disappeared during polling')
+      }
+
+      // Terminal states
+      if (record.status === 'COMPLETED') {
+        console.log(`[QCOrchestrator] Job terminal state COMPLETED: ${filename}`)
+        return
+      }
+      if (record.status === 'FAILED') {
+        console.log(`[QCOrchestrator] Job terminal state FAILED: ${filename}`)
+        return
+      }
+
+      // Not terminal yet, wait before checking again
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
-    this.isProcessingQueue = false
+    throw new Error(`Job did not complete within ${maxWaitTime / 1000}s timeout`)
   }
 
   private async processNewFile(filePath: string, filename: string, _isRetry = false, existingRecordId?: string | null): Promise<void> {
@@ -310,6 +340,10 @@ class QCOrchestrator extends EventEmitter {
 
       // Step 2: Submit to external API
       await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
+
+      // Step 3: Wait for job to complete (polling reaches terminal state)
+      // This keeps the job slot occupied until COMPLETED or FAILED
+      await this.waitForJobCompletion(record.qc_id, filename)
 
       // Release lock after successful processing
       await releaseLock(lockBasePath, filePath)
@@ -567,6 +601,23 @@ class QCOrchestrator extends EventEmitter {
 
     // Trigger queue processing immediately
     this.processQueue()
+  }
+
+  setMaxConcurrentJobs(count: number): void {
+    if (count < 1) {
+      console.warn('[QCOrchestrator] Max concurrent jobs must be at least 1')
+      return
+    }
+
+    this.MAX_CONCURRENT_JOBS = count
+    console.log(`[QCOrchestrator] Max concurrent jobs set to: ${count}`)
+
+    // Trigger queue processing in case we increased the limit and jobs are queued
+    this.processQueue()
+  }
+
+  getMaxConcurrentJobs(): number {
+    return this.MAX_CONCURRENT_JOBS
   }
 }
 
