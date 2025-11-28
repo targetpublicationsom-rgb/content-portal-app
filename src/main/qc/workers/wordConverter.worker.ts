@@ -10,7 +10,7 @@ import * as fs from 'fs'
 import { spawn } from 'child_process'
 import type { WorkerMessage, WorkerResponse } from './types'
 
-let isInitialized = false
+let wordAvailable = false
 
 /**
  * Initialize worker (verify PowerShell and Word are available)
@@ -19,35 +19,38 @@ async function initializeWord(): Promise<void> {
   try {
     // Verify Word is installed by checking registry
     const wordPath = await getWordInstallPath()
-    
-    if (!wordPath) {
-      throw new Error('Microsoft Word is not installed on this system')
-    }
 
-    console.log('[WordWorker] Word found at:', wordPath)
-    isInitialized = true
+    if (!wordPath) {
+      console.warn('[WordWorker] Microsoft Word is not installed on this system - conversions will fail if requested')
+      // Don't throw - just log warning and continue
+      // This allows the worker to start in dev environments without Word
+      wordAvailable = false
+    } else {
+      console.log('[WordWorker] Word found at:', wordPath)
+      wordAvailable = true
+    }
 
     if (parentPort) {
       parentPort.postMessage({
         id: 'init',
         type: 'success',
-        data: { message: 'Word converter initialized' }
+        data: { message: 'Word converter initialized', wordAvailable }
       } as WorkerResponse)
     }
   } catch (error) {
-    console.error('[WordWorker] Failed to initialize:', error)
-    
+    console.warn('[WordWorker] Failed to initialize Word check:', error)
+
+    // Don't throw on initialization errors - worker should still start
+    // Actual conversion attempts will fail with a proper error
+    wordAvailable = false
+
     if (parentPort) {
       parentPort.postMessage({
         id: 'init',
-        type: 'error',
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        }
+        type: 'success',
+        data: { message: 'Word converter initialized with limitations' }
       } as WorkerResponse)
     }
-    throw error
   }
 }
 
@@ -81,7 +84,7 @@ function getWordInstallPath(): Promise<string | null> {
  * Shutdown worker
  */
 async function shutdownWord(): Promise<void> {
-  isInitialized = false
+  wordAvailable = false
   console.log('[WordWorker] Shutdown complete')
 }
 
@@ -93,8 +96,9 @@ async function convertDocxToPdf(
   docxPath: string,
   pdfPath: string
 ): Promise<void> {
-  if (!isInitialized) {
-    throw new Error('Word converter not initialized')
+  // Check if conversion is even possible
+  if (!fs.existsSync(docxPath)) {
+    throw new Error(`Source file not found: ${docxPath}`)
   }
 
   const absDocxPath = path.resolve(docxPath)
@@ -140,17 +144,17 @@ $ErrorActionPreference = 'Stop'
 try {
     # Create Word COM object
     $word = New-Object -ComObject Word.Application
-    $word.Visible = $$false
+    $word.Visible = $false
     $word.DisplayAlerts = 0  # wdAlertsNone
     
     # Open document
-    $doc = $word.Documents.Open("${absDocxPath.replace(/\\/g, '\\\\')}", $$false, $$true)
+    $doc = $word.Documents.Open("${absDocxPath.replace(/\\/g, '\\\\')}", $false, $true)
     
     # Save as PDF (format 17 = wdFormatPDF)
     $doc.SaveAs("${absPdfPath.replace(/\\/g, '\\\\')}", 17)
     
     # Close document
-    $doc.Close($$false)
+    $doc.Close($false)
     
     # Quit Word
     $word.Quit()
@@ -242,7 +246,7 @@ if (parentPort) {
       }
     } catch (error: unknown) {
       console.error('[WordWorker] Error processing message:', error)
-      
+
       if (parentPort) {
         parentPort.postMessage({
           id: message.id,

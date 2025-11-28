@@ -104,6 +104,8 @@ class QCWatcher extends EventEmitter {
     }
 
     console.log(`[QCWatcher] ✓ New DOCX file detected: ${filename}`)
+    console.log(`[QCWatcher]   Path: ${filePath}`)
+    console.log(`[QCWatcher]   Timestamp: ${new Date().toISOString()}`)
 
     // Mark this file as recently processed
     this.recentlyProcessedFiles.set(filePath, Date.now())

@@ -17,7 +17,7 @@ export function registerQCIpcHandlers(): void {
     'qc:get-records',
     async (_event, filters?: QCFilters, limit?: number, offset?: number) => {
       try {
-        const records = getQCRecords(filters, limit, offset)
+        const records = await getQCRecords(filters, limit, offset)
         return { success: true, data: records }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to get QC records'
@@ -29,7 +29,7 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:get-record', async (_event, qcId: string) => {
     try {
-      const record = getQCRecord(qcId)
+      const record = await getQCRecord(qcId)
       if (!record) {
         return { success: false, error: 'QC record not found' }
       }
@@ -43,7 +43,7 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:get-stats', async () => {
     try {
-      const stats = getQCStats()
+      const stats = await getQCStats()
       return { success: true, data: stats }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get QC statistics'
@@ -121,7 +121,7 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:delete-record', async (_event, qcId: string) => {
     try {
-      const deleted = deleteQCRecord(qcId)
+      const deleted = await deleteQCRecord(qcId)
       if (!deleted) {
         return { success: false, error: 'Record not found' }
       }
@@ -135,7 +135,7 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:delete-all-records', async () => {
     try {
-      const count = deleteAllQCRecords()
+      const count = await deleteAllQCRecords()
       return { success: true, data: count }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete all records'
