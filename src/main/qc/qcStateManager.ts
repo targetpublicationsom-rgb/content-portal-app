@@ -186,25 +186,14 @@ export function updateQCRecord(qcId: string, updates: Partial<QCRecord>): void {
 
   const allowedFields = ['error_message', 'retry_count']
   const fields = Object.keys(updates).filter(key => allowedFields.includes(key))
-  
+
   if (fields.length === 0) return
 
   const setClause = fields.map(field => `${field} = ?`).join(', ')
   const values = fields.map(field => updates[field as keyof QCRecord])
-  
+
   const stmt = db.prepare(`UPDATE qc_records SET ${setClause} WHERE qc_id = ?`)
   stmt.run(...values, qcId)
-}
-
-// Increment retry count
-export function incrementRetryCount(qcId: string): number {
-  if (!db) throw new Error('Database not initialized')
-
-  const stmt = db.prepare('UPDATE qc_records SET retry_count = retry_count + 1 WHERE qc_id = ?')
-  stmt.run(qcId)
-
-  const record = getQCRecord(qcId)
-  return record?.retry_count || 0
 }
 
 // Get a single QC record
@@ -315,16 +304,6 @@ export function getQCStats(): QCStats {
     avgScore: avgScore.avg || 0,
     avgProcessingTime: avgTime.avg || 0
   }
-}
-
-// Get records by external QC ID
-export function getQCRecordByExternalId(externalQcId: string): QCRecord | null {
-  if (!db) throw new Error('Database not initialized')
-
-  const stmt = db.prepare('SELECT * FROM qc_records WHERE external_qc_id = ?')
-  const record = stmt.get(externalQcId) as QCRecord | undefined
-
-  return record || null
 }
 
 // Get records in processing state (for polling)
