@@ -88,7 +88,16 @@ async function convertMdToDocx(messageId: string, mdPath: string, docxPath: stri
       return
     }
 
-    const args = [absMdPath, '-o', absDocxPath, '--from=markdown', '--to=docx']
+    // Enhanced Pandoc arguments for better DOCX output
+    const args = [
+      absMdPath,
+      '-o', absDocxPath,
+      '--from=markdown',
+      '--to=docx',
+      '--standalone', // Create a standalone document with proper structure
+      '--wrap=auto', // Automatic line wrapping
+      '--columns=80' // Set column width for better formatting
+    ]
 
     console.log(`[PandocWorker] Running: ${pandocPath} ${args.join(' ')}`)
 
