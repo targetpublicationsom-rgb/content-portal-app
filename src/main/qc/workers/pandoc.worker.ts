@@ -15,16 +15,40 @@ let pandocPath: string | null = null
  * Initialize Pandoc path
  */
 function initializePandoc(): void {
-  // Check bundled Pandoc in tools folder
-  const bundledPandoc = path.join(__dirname, '..', '..', '..', 'tools', 'pandoc.exe')
+  // Determine if running in development or production
+  const isDev = process.env.NODE_ENV === 'development' || !process.resourcesPath
   
-  if (fs.existsSync(bundledPandoc)) {
-    pandocPath = bundledPandoc
-    console.log('[PandocWorker] Using bundled Pandoc:', pandocPath)
+  let possiblePaths: string[] = []
+  
+  if (isDev) {
+    // Development: tools folder is at project root
+    possiblePaths = [
+      path.join(__dirname, '..', '..', '..', 'tools', 'pandoc.exe'),
+      path.join(process.cwd(), 'tools', 'pandoc.exe')
+    ]
   } else {
+    // Production: tools folder is packed in asar or next to resources
+    possiblePaths = [
+      // Next to resources folder (if extraFiles is used)
+      path.join(path.dirname(process.resourcesPath), 'tools', 'pandoc.exe'),
+      // In resources folder
+      path.join(process.resourcesPath, 'tools', 'pandoc.exe')
+    ]
+  }
+  
+  // Try each possible path
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      pandocPath = testPath
+      console.log('[PandocWorker] Using bundled Pandoc:', pandocPath)
+      break
+    }
+  }
+  
+  if (!pandocPath) {
     // Fall back to system Pandoc
     pandocPath = 'pandoc'
-    console.log('[PandocWorker] Using system Pandoc (not found at:', bundledPandoc, ')')
+    console.log('[PandocWorker] Using system Pandoc (bundled not found in:', possiblePaths.join(', '), ')')
   }
 
   if (parentPort) {
