@@ -82,10 +82,14 @@ export async function initializeQCDatabase(): Promise<void> {
       }
 
       try {
-        // Use DELETE mode instead of WAL for better network drive compatibility
-        await runAsync('PRAGMA journal_mode = DELETE')
-        // Set busy timeout for concurrent access
-        await runAsync('PRAGMA busy_timeout = 5000')
+        // Use WAL mode for better concurrent read access during writes
+        await runAsync('PRAGMA journal_mode = WAL')
+        // Set long busy timeout for concurrent access (30 seconds)
+        await runAsync('PRAGMA busy_timeout = 30000')
+        // Allow reading uncommitted data for better concurrency
+        await runAsync('PRAGMA read_uncommitted = 1')
+        // Synchronous = NORMAL for better performance
+        await runAsync('PRAGMA synchronous = NORMAL')
 
         // Create tables
         const createTableSQL = `

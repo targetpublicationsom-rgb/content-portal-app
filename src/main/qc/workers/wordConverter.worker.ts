@@ -284,7 +284,7 @@ if (parentPort) {
 
         default:
           throw new Error(`Unknown message type: ${message.type}`)
-           
+
       }
     } catch (error: unknown) {
       console.error('[WordWorker] Error processing message:', error)

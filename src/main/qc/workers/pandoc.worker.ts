@@ -88,40 +88,41 @@ async function convertMdToDocx(messageId: string, mdPath: string, docxPath: stri
       return
     }
 
-    // Enhanced Pandoc arguments for better DOCX output
+    // Enhanced Pandoc arguments for better DOCX output with visible content
     const args = [
       absMdPath,
       '-o', absDocxPath,
-      '--from=markdown',
+      '--from=markdown+hard_line_breaks', // Preserve line breaks
       '--to=docx',
-      '--standalone', // Create a standalone document with proper structure
-      '--wrap=auto', // Automatic line wrapping
-      '--columns=80' // Set column width for better formatting
+      '--standalone',
+      '--wrap=preserve', // Preserve original wrapping
+      '--resource-path=.:' + path.dirname(absMdPath) // For images/resources
     ]
 
     console.log(`[PandocWorker] Running: ${pandocPath} ${args.join(' ')}`)
 
-    const process = spawn(pandocPath, args, {
-      stdio: ['ignore', 'pipe', 'pipe']
+    const childProcess = spawn(pandocPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LANG: 'en_US.UTF-8' } // Ensure proper encoding
     })
 
     let stdout = ''
     let stderr = ''
 
-    process.stdout.on('data', (data) => {
+    childProcess.stdout.on('data', (data) => {
       stdout += data.toString()
     })
 
-    process.stderr.on('data', (data) => {
+    childProcess.stderr.on('data', (data) => {
       stderr += data.toString()
     })
 
     const timeout = setTimeout(() => {
-      process.kill()
+      childProcess.kill()
       reject(new Error('Pandoc conversion timed out after 30 seconds'))
     }, 30000)
 
-    process.on('close', (code) => {
+    childProcess.on('close', (code) => {
       clearTimeout(timeout)
 
       if (code === 0) {
