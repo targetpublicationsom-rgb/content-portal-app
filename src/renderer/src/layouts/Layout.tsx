@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, LogOut, FileCheck } from 'lucide-react'
+import { LayoutDashboard, Briefcase, LogOut, FileCheck, ListChecks } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import StatusBar from '../components/StatusBar'
@@ -61,7 +61,8 @@ export default function Layout(): React.JSX.Element {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/jobs', label: 'Jobs', icon: Briefcase },
-    { path: '/qc', label: 'QC', icon: FileCheck }
+    { path: '/qc', label: 'QC', icon: FileCheck },
+    { path: '/numbering-checker', label: 'Numbering Checker', icon: ListChecks }
   ]
 
   return (
@@ -80,11 +81,10 @@ export default function Layout(): React.JSX.Element {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-accent hover:text-accent-foreground'
-                }`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-accent hover:text-accent-foreground'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 <span className="font-medium">{item.label}</span>

@@ -93,6 +93,12 @@ const api = {
     }
   },
 
+  // Numbering Checker Module APIs
+  numbering: {
+    validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) =>
+      ipcRenderer.invoke('numbering:validate', questionsPath, solutionsPath, expectedCount)
+  },
+
   // Shell and Dialog APIs
   shell: {
     openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path)

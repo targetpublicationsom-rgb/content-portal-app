@@ -41,7 +41,7 @@ class QCOrchestrator extends EventEmitter {
     recordId?: string | null
   }> = []
   private activeJobs = 0
-  private readonly MAX_CONCURRENT_JOBS = 1
+  private MAX_CONCURRENT_JOBS = 1
   private isProcessingQueue = false
   private workerPool: WorkerPool | null = null
   private processingFiles: Set<string> = new Set() // Track files currently being processed
@@ -60,7 +60,7 @@ class QCOrchestrator extends EventEmitter {
       initializeQCConfig()
 
       // Initialize all modules
-      initializeQCDatabase()
+      await initializeQCDatabase()
       initializeQCNotifications(mainWindow)
 
       // Initialize worker pool for heavy operations
@@ -89,7 +89,13 @@ class QCOrchestrator extends EventEmitter {
       // Start polling for processing records
       this.startStatusPolling()
 
-      // DO NOT auto-start watcher - user must manually start it via dashboard button
+      // Auto-start watcher if watch folders are configured
+      if (config.watchFolders && config.watchFolders.length > 0) {
+        startQCWatcher(config.watchFolders)
+        console.log('[QCOrchestrator] Watcher auto-started with configured folders')
+      } else {
+        console.log('[QCOrchestrator] No watch folders configured - watcher will start manually')
+      }
 
       this.isInitialized = true
       console.log('[QCOrchestrator] Initialized successfully')
@@ -118,7 +124,7 @@ class QCOrchestrator extends EventEmitter {
     }
 
     // Close database
-    closeQCDatabase()
+    await closeQCDatabase()
 
     this.isInitialized = false
     console.log('[QCOrchestrator] Shutdown complete')
@@ -129,7 +135,7 @@ class QCOrchestrator extends EventEmitter {
 
     watcher.on('file-detected', async (event: WatchEvent) => {
       console.log(`[QCOrchestrator] File detected: ${event.filename}`)
-      this.enqueueJob(event.filePath, event.filename)
+      await this.enqueueJob(event.filePath, event.filename)
     })
 
     watcher.on('error', (error: string) => {
@@ -138,7 +144,7 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
-  private enqueueJob(filePath: string, filename: string, isRetry = false): void {
+  private async enqueueJob(filePath: string, filename: string, isRetry = false): Promise<void> {
     // Check if this file is already being processed (in queue or active)
     if (this.processingFiles.has(filePath) && !isRetry) {
       console.log(`[QCOrchestrator] File already queued/processing, skipping: ${filename}`)
@@ -150,12 +156,12 @@ class QCOrchestrator extends EventEmitter {
     
     if (!isRetry) {
       // Check if record already exists
-      const existingRecord = getRecordByFilePath(filePath)
+      const existingRecord = await getRecordByFilePath(filePath)
       if (!existingRecord) {
         // Create new record with QUEUED status
-        const record = createQCRecord(filePath)
+        const record = await createQCRecord(filePath)
         recordId = record.qc_id
-        updateQCStatus(record.qc_id, 'QUEUED')
+        await updateQCStatus(record.qc_id, 'QUEUED')
         
         // Emit to renderer so UI updates immediately
         this.emitToRenderer('qc:file-detected', { record })
@@ -175,7 +181,7 @@ class QCOrchestrator extends EventEmitter {
         
         // For FAILED or QUEUED records, update status back to QUEUED for retry
         if (existingRecord.status === 'FAILED') {
-          updateQCStatus(recordId, 'QUEUED')
+          await updateQCStatus(recordId, 'QUEUED')
         }
       }
     }
@@ -204,30 +210,14 @@ class QCOrchestrator extends EventEmitter {
 
     this.isProcessingQueue = true
 
-    while (this.jobQueue.length > 0 && this.activeJobs < this.MAX_CONCURRENT_JOBS) {
-      const job = this.jobQueue.shift()
-      if (!job) continue
+    try {
+      while (this.jobQueue.length > 0 && this.activeJobs < this.MAX_CONCURRENT_JOBS) {
+        const job = this.jobQueue.shift()
+        if (!job) continue
 
-      this.activeJobs++
-      console.log(
-        `[QCOrchestrator] Starting job: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
-      )
-
-      this.emitToRenderer('qc:queue-status', {
-        queueLength: this.jobQueue.length,
-        activeJobs: this.activeJobs,
-        maxConcurrent: this.MAX_CONCURRENT_JOBS
-      })
-
-      // Process job without awaiting (parallel execution)
-      this.processNewFile(job.filePath, job.filename, job.isRetry, job.recordId).finally(() => {
-        this.activeJobs--
-        
-        // Remove from processing set when job completes
-        this.processingFiles.delete(job.filePath)
-        
+        this.activeJobs++
         console.log(
-          `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+          `[QCOrchestrator] Starting job: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
         )
 
         this.emitToRenderer('qc:queue-status', {
@@ -236,13 +226,59 @@ class QCOrchestrator extends EventEmitter {
           maxConcurrent: this.MAX_CONCURRENT_JOBS
         })
 
-        // Try to process next job
-        this.isProcessingQueue = false
-        this.processQueue()
-      })
+        // Await job completion before processing next (strict serialization)
+        try {
+          await this.processNewFile(job.filePath, job.filename, job.isRetry, job.recordId)
+        } catch (error) {
+          console.error(`[QCOrchestrator] Error processing job: ${job.filename}`, error)
+        } finally {
+          this.activeJobs--
+          this.processingFiles.delete(job.filePath)
+
+          console.log(
+            `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
+          )
+
+          this.emitToRenderer('qc:queue-status', {
+            queueLength: this.jobQueue.length,
+            activeJobs: this.activeJobs,
+            maxConcurrent: this.MAX_CONCURRENT_JOBS
+          })
+        }
+      }
+    } finally {
+      this.isProcessingQueue = false
+    }
+  }
+
+  private async waitForJobCompletion(qcId: string, filename: string): Promise<void> {
+    // Wait until the job reaches COMPLETED or FAILED status
+    // Polls the database until terminal state is reached
+    const maxWaitTime = 15 * 60 * 1000 // 15 minutes max
+    const pollInterval = 2000 // 2 seconds
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const record = await getQCRecord(qcId)
+      if (!record) {
+        throw new Error('Record disappeared during polling')
+      }
+
+      // Terminal states
+      if (record.status === 'COMPLETED') {
+        console.log(`[QCOrchestrator] Job terminal state COMPLETED: ${filename}`)
+        return
+      }
+      if (record.status === 'FAILED') {
+        console.log(`[QCOrchestrator] Job terminal state FAILED: ${filename}`)
+        return
+      }
+
+      // Not terminal yet, wait before checking again
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
-    this.isProcessingQueue = false
+    throw new Error(`Job did not complete within ${maxWaitTime / 1000}s timeout`)
   }
 
   private async processNewFile(filePath: string, filename: string, _isRetry = false, existingRecordId?: string | null): Promise<void> {
@@ -258,7 +294,7 @@ class QCOrchestrator extends EventEmitter {
       if (existingLock) {
         console.log(`[QCOrchestrator] File is locked by ${existingLock.processedBy}: ${filename}`)
         if (recordId) {
-          updateQCStatus(recordId, 'FAILED', `File is locked by ${existingLock.processedBy}`)
+          await updateQCStatus(recordId, 'FAILED', `File is locked by ${existingLock.processedBy}`)
         }
         return
       }
@@ -266,7 +302,7 @@ class QCOrchestrator extends EventEmitter {
       // If we have a recordId from queueing, use it
       if (!recordId) {
         // No record from queueing, check if one exists (should always exist from enqueueJob)
-        const existingRecord = getRecordByFilePath(filePath)
+        const existingRecord = await getRecordByFilePath(filePath)
         if (existingRecord) {
           recordId = existingRecord.qc_id
         } else {
@@ -277,7 +313,7 @@ class QCOrchestrator extends EventEmitter {
       }
 
       // Get the record
-      const record = getQCRecord(recordId)
+      const record = await getQCRecord(recordId)
       if (!record) {
         throw new Error('Failed to get QC record')
       }
@@ -288,7 +324,7 @@ class QCOrchestrator extends EventEmitter {
         console.log(
           `[QCOrchestrator] Could not acquire lock for ${filename}: ${lockResult.error || 'locked by ' + lockResult.lockedBy}`
         )
-        updateQCStatus(record.qc_id, 'FAILED', lockResult.error || 'File is locked')
+        await updateQCStatus(record.qc_id, 'FAILED', lockResult.error || 'File is locked')
         return
       }
 
@@ -296,14 +332,18 @@ class QCOrchestrator extends EventEmitter {
       const paths = getQCOutputPaths(record.qc_id, filename)
 
       // Step 1: Convert DOCX to PDF
-      updateQCStatus(record.qc_id, 'CONVERTING')
+      await updateQCStatus(record.qc_id, 'CONVERTING')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING' })
 
       const pdfPath = await this.convertToPdf(filePath, paths.pdfPath)
-      updateQCPdfPath(record.qc_id, pdfPath)
+      await updateQCPdfPath(record.qc_id, pdfPath)
 
       // Step 2: Submit to external API
       await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
+
+      // Step 3: Wait for job to complete (polling reaches terminal state)
+      // This keeps the job slot occupied until COMPLETED or FAILED
+      await this.waitForJobCompletion(record.qc_id, filename)
 
       // Release lock after successful processing
       await releaseLock(lockBasePath, filePath)
@@ -316,7 +356,7 @@ class QCOrchestrator extends EventEmitter {
 
       // Use the existing record ID, don't create a new one
       if (recordId) {
-        updateQCStatus(recordId, 'FAILED', errorMessage)
+        await updateQCStatus(recordId, 'FAILED', errorMessage)
         notifyQCFailed(filename, errorMessage)
         this.emitToRenderer('qc:status-update', {
           qcId: recordId,
@@ -353,12 +393,12 @@ class QCOrchestrator extends EventEmitter {
       throw new Error('External QC service not configured')
     }
 
-    updateQCStatus(qcId, 'SUBMITTING')
+    await updateQCStatus(qcId, 'SUBMITTING')
     this.emitToRenderer('qc:status-update', { qcId, status: 'SUBMITTING' })
 
     const response = await service.submitPdfForQC(pdfPath, filename)
-    updateQCExternalId(qcId, response.job_id)
-    updateQCStatus(qcId, 'PROCESSING')
+    await updateQCExternalId(qcId, response.job_id)
+    await updateQCStatus(qcId, 'PROCESSING')
     this.emitToRenderer('qc:status-update', {
       qcId,
       status: 'PROCESSING',
@@ -378,7 +418,7 @@ class QCOrchestrator extends EventEmitter {
 
   private async pollProcessingRecords(): Promise<void> {
     try {
-      const processingRecords = getProcessingRecords()
+      const processingRecords = await getProcessingRecords()
 
       for (const record of processingRecords) {
         await this.checkQCStatus(record)
@@ -400,7 +440,7 @@ class QCOrchestrator extends EventEmitter {
       if (status.status === 'COMPLETED' && status.result) {
         await this.handleQCComplete(record, status.result)
       } else if (status.status === 'FAILED') {
-        updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
+        await updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
         notifyQCFailed(record.original_name, 'QC processing failed')
         this.emitToRenderer('qc:status-update', {
           qcId: record.qc_id,
@@ -423,13 +463,13 @@ class QCOrchestrator extends EventEmitter {
       const paths = getQCOutputPaths(record.qc_id, record.original_name)
 
       // Save MD report
-      updateQCStatus(record.qc_id, 'DOWNLOADING')
+      await updateQCStatus(record.qc_id, 'DOWNLOADING')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'DOWNLOADING' })
 
       await fs.writeFile(paths.reportMdPath, reportMarkdown, 'utf-8')
 
       // Convert MD to DOCX using worker
-      updateQCStatus(record.qc_id, 'CONVERTING_REPORT')
+      await updateQCStatus(record.qc_id, 'CONVERTING_REPORT')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING_REPORT' })
 
       try {
@@ -475,7 +515,7 @@ class QCOrchestrator extends EventEmitter {
       }
 
       // Update record with report data (no score)
-      updateQCReport(
+      await updateQCReport(
         record.qc_id,
         paths.reportMdPath,
         paths.reportDocxPath,
@@ -486,7 +526,7 @@ class QCOrchestrator extends EventEmitter {
         issuesHigh
       )
 
-      updateQCStatus(record.qc_id, 'COMPLETED')
+      await updateQCStatus(record.qc_id, 'COMPLETED')
       notifyQCCompleted(record.original_name, null)
       this.emitToRenderer('qc:status-update', {
         qcId: record.qc_id,
@@ -500,7 +540,7 @@ class QCOrchestrator extends EventEmitter {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QCOrchestrator] Error handling QC completion:`, error)
-      updateQCStatus(record.qc_id, 'FAILED', errorMessage)
+      await updateQCStatus(record.qc_id, 'FAILED', errorMessage)
       notifyQCFailed(record.original_name, errorMessage)
       this.emitToRenderer('qc:status-update', {
         qcId: record.qc_id,
@@ -528,7 +568,7 @@ class QCOrchestrator extends EventEmitter {
     initializeQCConfig()
 
     // Reinitialize database in case path changed
-    reinitializeQCDatabase()
+    await reinitializeQCDatabase()
 
     const config = getConfig()
     if (config.watchFolders.length > 0) {
@@ -538,7 +578,7 @@ class QCOrchestrator extends EventEmitter {
   }
 
   async retryRecord(qcId: string): Promise<void> {
-    const record = getQCRecord(qcId)
+    const record = await getQCRecord(qcId)
     if (!record) {
       throw new Error('Record not found')
     }
@@ -546,7 +586,7 @@ class QCOrchestrator extends EventEmitter {
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
 
     // Reset all retry-related fields including timestamp and status in a single update
-    updateQCRecord(qcId, {
+    await updateQCRecord(qcId, {
       status: 'QUEUED',
       external_qc_id: null,
       error_message: null,
@@ -557,10 +597,27 @@ class QCOrchestrator extends EventEmitter {
     this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
 
     // Enqueue the retry job (respects concurrency limits)
-    this.enqueueJob(record.file_path, record.original_name, true)
+    await this.enqueueJob(record.file_path, record.original_name, true)
 
     // Trigger queue processing immediately
     this.processQueue()
+  }
+
+  setMaxConcurrentJobs(count: number): void {
+    if (count < 1) {
+      console.warn('[QCOrchestrator] Max concurrent jobs must be at least 1')
+      return
+    }
+
+    this.MAX_CONCURRENT_JOBS = count
+    console.log(`[QCOrchestrator] Max concurrent jobs set to: ${count}`)
+
+    // Trigger queue processing in case we increased the limit and jobs are queued
+    this.processQueue()
+  }
+
+  getMaxConcurrentJobs(): number {
+    return this.MAX_CONCURRENT_JOBS
   }
 }
 
