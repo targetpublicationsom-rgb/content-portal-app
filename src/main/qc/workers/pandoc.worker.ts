@@ -27,12 +27,12 @@ function initializePandoc(): void {
       path.join(process.cwd(), 'tools', 'pandoc.exe')
     ]
   } else {
-    // Production: tools folder is packed in asar or next to resources
+    // Production: tools are unpacked from asar at app.asar.unpacked/tools
     possiblePaths = [
-      // Next to resources folder (if extraFiles is used)
-      path.join(path.dirname(process.resourcesPath), 'tools', 'pandoc.exe'),
-      // In resources folder
-      path.join(process.resourcesPath, 'tools', 'pandoc.exe')
+      // Primary: in app.asar.unpacked (executables must be unpacked from asar)
+      path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'pandoc.exe'),
+      // Alternative: extraResources location (if someone manually places it there)
+      path.join(process.resourcesPath, '..', 'tools', 'pandoc.exe')
     ]
   }
   

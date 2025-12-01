@@ -17,6 +17,7 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - tools/**
 win:
   executableName: content-portal-windows-app
   target:
