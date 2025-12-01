@@ -59,4 +59,6 @@ export interface QCFilters {
   dateTo?: string
   minScore?: number
   maxScore?: number
+  filename?: string
+  hasIssues?: boolean
 }

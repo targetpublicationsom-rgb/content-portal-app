@@ -1,18 +1,30 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
+import { Card, CardContent } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
-import { FileText, Eye, RefreshCw, RotateCw } from 'lucide-react'
+import { FileText, Eye, RefreshCw, RotateCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
-import type { QCRecord, QCStatus } from '../../types/qc.types'
+import type { QCRecord, QCStatus, QCFilters } from '../../types/qc.types'
 
 export default function QCFileList(): React.JSX.Element {
   const location = useLocation()
   const [records, setRecords] = useState<QCRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(25)
+  const [totalRecords, setTotalRecords] = useState(0)
+  
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<QCStatus | 'all'>('all')
+  const [issueFilter, setIssueFilter] = useState<'all' | 'with-issues' | 'no-issues'>('all')
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
@@ -30,13 +42,34 @@ export default function QCFileList(): React.JSX.Element {
     return () => {
       clearInterval(pollInterval)
     }
-  }, [])
+  }, [currentPage, itemsPerPage, searchQuery, statusFilter, issueFilter])
 
   const loadRecords = async (): Promise<void> => {
     try {
       setLoading(true)
-      const data = await qcService.getRecords(undefined, 50, 0)
+      
+      // Build filters
+      const filters: QCFilters = {}
+      if (statusFilter !== 'all') {
+        filters.status = statusFilter
+      }
+      if (searchQuery.trim()) {
+        filters.filename = searchQuery.trim()
+      }
+      if (issueFilter === 'with-issues') {
+        filters.hasIssues = true
+      } else if (issueFilter === 'no-issues') {
+        filters.hasIssues = false
+      }
+      
+      const offset = (currentPage - 1) * itemsPerPage
+      const data = await qcService.getRecords(filters, itemsPerPage, offset)
       setRecords(data)
+      
+      // Get total count for pagination (we'll need to add this to the service)
+      const stats = await qcService.getStats()
+      setTotalRecords(stats.total)
+      
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load records')
@@ -99,6 +132,36 @@ export default function QCFileList(): React.JSX.Element {
     await window.api.shell.openPath(filePath)
   }
 
+  const totalPages = Math.ceil(totalRecords / itemsPerPage)
+  const canGoPrevious = currentPage > 1
+  const canGoNext = currentPage < totalPages
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage)
+    }
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setCurrentPage(1) // Reset to first page on search
+  }
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value as QCStatus | 'all')
+    setCurrentPage(1) // Reset to first page on filter change
+  }
+
+  const handleIssueFilterChange = (value: string) => {
+    setIssueFilter(value as 'all' | 'with-issues' | 'no-issues')
+    setCurrentPage(1) // Reset to first page on filter change
+  }
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value))
+    setCurrentPage(1) // Reset to first page on page size change
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* Navigation Tabs */}
@@ -121,13 +184,66 @@ export default function QCFileList(): React.JSX.Element {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">QC Records</h1>
-          <p className="text-muted-foreground mt-1">View all quality check records</p>
+          <p className="text-muted-foreground mt-1">
+            Showing {records.length} of {totalRecords} records
+          </p>
         </div>
         <Button onClick={loadRecords} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
+
+      {/* Filters - Compact Layout */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search - Takes 50% */}
+            <div className="flex-[2] min-w-0">
+              <Input
+                placeholder="Search by filename..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            {/* Status Filter - 25% */}
+            <div className="flex-1 min-w-0">
+              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="QUEUED">Queued</SelectItem>
+                  <SelectItem value="CONVERTING">Converting</SelectItem>
+                  <SelectItem value="SUBMITTING">Submitting</SelectItem>
+                  <SelectItem value="PROCESSING">Processing</SelectItem>
+                  <SelectItem value="DOWNLOADING">Downloading</SelectItem>
+                  <SelectItem value="CONVERTING_REPORT">Converting Report</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="FAILED">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Issues Filter - 25% */}
+            <div className="flex-1 min-w-0">
+              <Select value={issueFilter} onValueChange={handleIssueFilterChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Records</SelectItem>
+                  <SelectItem value="with-issues">With Issues</SelectItem>
+                  <SelectItem value="no-issues">No Issues</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {error && (
         <Card className="border-destructive">
@@ -138,20 +254,17 @@ export default function QCFileList(): React.JSX.Element {
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Recent QC Files</CardTitle>
-          <CardDescription>Last 50 quality check records</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Filename</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-center">Issues</TableHead>
-                <TableHead>Processed By</TableHead>
-                <TableHead>Submitted</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="w-[35%]">Filename</TableHead>
+                <TableHead className="w-[12%]">Status</TableHead>
+                <TableHead className="w-[8%] text-center">Issues</TableHead>
+                <TableHead className="w-[15%] hidden lg:table-cell">Processed By</TableHead>
+                <TableHead className="w-[15%] hidden md:table-cell">Submitted</TableHead>
+                <TableHead className="w-[15%] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -164,28 +277,43 @@ export default function QCFileList(): React.JSX.Element {
               ) : (
                 records.map((record) => (
                   <TableRow key={record.qc_id}>
-                    <TableCell className="font-medium">{record.original_name}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>{record.issues_found}</TableCell>
-
-                    {/* Grouped Severity Issues */}
-                    {/* <TableCell className="text-center font-medium">
-                      <span className="text-blue-600"> Low: {record.issues_low || 0}</span>
-                      <span className="text-yellow-600"> Med: {record.issues_medium || 0}</span>
-                      <span className="text-red-600"> High: {record.issues_high || 0}</span>
-                    </TableCell> */}
-                    <TableCell className="text-xs font-mono text-muted-foreground">
-                      {record.processed_by || '—'}
+                    <TableCell className="font-medium max-w-0">
+                      <div className="truncate" title={record.original_name}>
+                        {record.original_name}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell>{getStatusBadge(record.status)}</TableCell>
+                    <TableCell className="text-center">
+                      {record.issues_found !== null ? (
+                        <Badge
+                          variant="outline"
+                          className={
+                            record.issues_found > 0
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }
+                        >
+                          {record.issues_found}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground hidden lg:table-cell max-w-0">
+                      <div className="truncate" title={record.processed_by || undefined}>
+                        {record.processed_by || '—'}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground hidden md:table-cell">
                       {formatDate(record.submitted_at)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-end gap-1">
                         {(record.status === 'FAILED' || record.status === 'COMPLETED') && (
                           <Button
-                            variant="outline"
-                            size="sm"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
                             onClick={() => handleRetry(record.qc_id)}
                             title="Retry processing"
                           >
@@ -194,7 +322,8 @@ export default function QCFileList(): React.JSX.Element {
                         )}
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
+                          className="h-8 w-8"
                           onClick={() => openFile(record.file_path)}
                           title="Open original file"
                         >
@@ -203,7 +332,8 @@ export default function QCFileList(): React.JSX.Element {
                         {(record.report_docx_path || record.report_md_path) && (
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
+                            className="h-8 w-8"
                             onClick={() => openReport(record)}
                             title="Open QC report"
                           >
@@ -217,6 +347,58 @@ export default function QCFileList(): React.JSX.Element {
               )}
             </TableBody>
           </Table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 border-t bg-muted/30">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Rows per page:</span>
+              <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                <SelectTrigger className="w-[70px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                {totalRecords > 0
+                  ? `${(currentPage - 1) * itemsPerPage + 1}-${Math.min(
+                      currentPage * itemsPerPage,
+                      totalRecords
+                    )} of ${totalRecords}`
+                  : '0 records'}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={!canGoPrevious || loading}
+                  title="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={!canGoNext || loading}
+                  title="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

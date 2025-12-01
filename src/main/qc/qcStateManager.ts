@@ -330,6 +330,19 @@ export async function getQCRecords(
     params.push(filters.maxScore)
   }
 
+  if (filters?.filename) {
+    sql += ' AND original_name LIKE ?'
+    params.push(`%${filters.filename}%`)
+  }
+
+  if (filters?.hasIssues !== undefined) {
+    if (filters.hasIssues) {
+      sql += ' AND issues_found > 0'
+    } else {
+      sql += ' AND (issues_found IS NULL OR issues_found = 0)'
+    }
+  }
+
   sql += ' ORDER BY submitted_at DESC LIMIT ? OFFSET ?'
   params.push(limit, offset)
 
