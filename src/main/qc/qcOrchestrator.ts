@@ -1,6 +1,8 @@
 import { BrowserWindow } from 'electron'
 import { EventEmitter } from 'events'
 import * as fs from 'fs/promises'
+import * as fsSync from 'fs'
+import * as path from 'path'
 import { WorkerPool } from './WorkerPool'
 import type { WorkerMessage } from './workers/types'
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
@@ -19,6 +21,7 @@ import {
   updateQCReport,
   getProcessingRecords,
   getRecordByFilePath,
+  getRecordByFolderAndType,
   getQCRecord,
   updateQCRecord,
   closeQCDatabase,
@@ -43,6 +46,7 @@ class QCOrchestrator extends EventEmitter {
     filename: string
     isRetry?: boolean
     recordId?: string | null
+    processingKey?: string // Key for processingFiles set (folderPath|fileType or filePath)
   }> = []
   private activeJobs = 0
   private MAX_CONCURRENT_JOBS = 1
@@ -95,6 +99,7 @@ class QCOrchestrator extends EventEmitter {
 
       // Auto-start watcher if watch folders are configured
       if (config.watchFolders && config.watchFolders.length > 0) {
+        this.ensureFormatFoldersExist(config.watchFolders)
         startQCWatcher(config.watchFolders)
         console.log('[QCOrchestrator] Watcher auto-started with configured folders')
       } else {
@@ -134,12 +139,50 @@ class QCOrchestrator extends EventEmitter {
     console.log('[QCOrchestrator] Shutdown complete')
   }
 
+  private ensureFormatFoldersExist(watchFolders: string[]): void {
+    for (const watchFolder of watchFolders) {
+      // Create .qc folder
+      const qcFolder = path.join(watchFolder, '.qc')
+      if (!fsSync.existsSync(qcFolder)) {
+        fsSync.mkdirSync(qcFolder, { recursive: true })
+        console.log(`[QCOrchestrator] Created .qc folder: ${qcFolder}`)
+      }
+
+      // Create format folders
+      const twoFileFormat = path.join(watchFolder, 'two-file format')
+      const threeFileFormat = path.join(watchFolder, 'three-file format')
+
+      if (!fsSync.existsSync(twoFileFormat)) {
+        fsSync.mkdirSync(twoFileFormat, { recursive: true })
+        console.log(`[QCOrchestrator] Created format folder: ${twoFileFormat}`)
+      }
+
+      if (!fsSync.existsSync(threeFileFormat)) {
+        fsSync.mkdirSync(threeFileFormat, { recursive: true })
+        console.log(`[QCOrchestrator] Created format folder: ${threeFileFormat}`)
+      }
+    }
+  }
+
   private setupWatcherEvents(): void {
     const watcher = getQCWatcher()
 
     watcher.on('file-detected', async (event: WatchEvent) => {
       console.log(`[QCOrchestrator] File detected: ${event.filename}`)
-      await this.enqueueJob(event.filePath, event.filename)
+
+      // Check if this is a folder-based event requiring merge
+      if (
+        event.folderPath &&
+        event.relatedFiles?.mcqs &&
+        event.relatedFiles?.solution &&
+        event.fileType === 'mcqs-solution'
+      ) {
+        console.log(`[QCOrchestrator] 3-file format detected for: ${event.chapterName}`)
+        await this.enqueueJobWithMerge(event)
+      } else {
+        // Single file or 2-file format (no merge needed)
+        await this.enqueueJob(event.filePath, event.filename, false, event)
+      }
     })
 
     watcher.on('error', (error: string) => {
@@ -148,9 +191,86 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
-  private async enqueueJob(filePath: string, filename: string, isRetry = false): Promise<void> {
-    // Check if this file is already being processed (in queue or active)
-    if (this.processingFiles.has(filePath) && !isRetry) {
+  private async enqueueJobWithMerge(event: WatchEvent): Promise<void> {
+    if (!event.relatedFiles?.mcqs || !event.relatedFiles?.solution || !event.folderPath) {
+      console.error('[QCOrchestrator] Invalid merge event - missing files')
+      return
+    }
+
+    const { mcqs, solution } = event.relatedFiles
+    const { folderPath, chapterName, fileType } = event
+
+    // Check if already processed
+    const existingRecord = await getRecordByFolderAndType(folderPath, fileType!)
+    if (existingRecord && existingRecord.status === 'COMPLETED') {
+      console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
+      return
+    }
+
+    try {
+      // Create merged file path in .qc folder
+      const qcFolder = path.join(folderPath, '.qc')
+      if (!fsSync.existsSync(qcFolder)) {
+        fsSync.mkdirSync(qcFolder, { recursive: true })
+      }
+
+      const mergedPath = path.join(qcFolder, `${chapterName}_MCQs & Solution_merged.docx`)
+
+      console.log(`[QCOrchestrator] Merging: ${path.basename(mcqs)} + ${path.basename(solution)}`)
+
+      // Invoke word merger worker
+      if (!this.workerPool) {
+        throw new Error('Worker pool not initialized')
+      }
+
+      const mergeMessage: WorkerMessage = {
+        id: `merge-${Date.now()}`,
+        type: 'merge-docx',
+        data: {
+          mcqsPath: mcqs,
+          solutionPath: solution,
+          outputPath: mergedPath
+        }
+      }
+
+      const mergeResponse = await this.workerPool.dispatchJob('wordMerger', mergeMessage)
+
+      if (mergeResponse.type === 'error') {
+        throw new Error(mergeResponse.error?.message || 'Merge failed')
+      }
+
+      const mergedFilePath = (mergeResponse.data as { mergedPath: string }).mergedPath
+      console.log(`[QCOrchestrator] Merge successful: ${mergedFilePath}`)
+
+      // Now enqueue the merged file for QC processing
+      const mergedEvent: WatchEvent = {
+        ...event,
+        filePath: mergedFilePath,
+        filename: path.basename(mergedFilePath)
+      }
+
+      await this.enqueueJob(mergedFilePath, path.basename(mergedFilePath), false, mergedEvent)
+    } catch (error) {
+      console.error(`[QCOrchestrator] Merge failed for ${chapterName}:`, error)
+      this.emitToRenderer('qc:error', {
+        message: `Failed to merge files for ${chapterName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })
+    }
+  }
+
+  private async enqueueJob(
+    filePath: string,
+    filename: string,
+    isRetry = false,
+    event?: WatchEvent
+  ): Promise<void> {
+    // For folder-based files, check by folder+type; for single files, check by path
+    const folderPath = event?.folderPath
+    const fileType = event?.fileType || 'single-file'
+
+    // Check if this file is already being processed
+    const processingKey = folderPath ? `${folderPath}|${fileType}` : filePath
+    if (this.processingFiles.has(processingKey) && !isRetry) {
       console.log(`[QCOrchestrator] File already queued/processing, skipping: ${filename}`)
       return
     }
@@ -160,10 +280,25 @@ class QCOrchestrator extends EventEmitter {
 
     if (!isRetry) {
       // Check if record already exists
-      const existingRecord = await getRecordByFilePath(filePath)
+      const existingRecord = folderPath
+        ? await getRecordByFolderAndType(folderPath, fileType)
+        : await getRecordByFilePath(filePath)
+
       if (!existingRecord) {
-        // Create new record with QUEUED status
-        const record = await createQCRecord(filePath)
+        // Create new record with folder metadata
+        const sourceFiles = event?.relatedFiles
+          ? Object.values(event.relatedFiles)
+              .filter(Boolean)
+              .map((p) => path.basename(p))
+          : undefined
+
+        const record = await createQCRecord(
+          filePath,
+          folderPath,
+          event?.chapterName,
+          fileType as 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
+          sourceFiles
+        )
         recordId = record.qc_id
         await updateQCStatus(record.qc_id, 'QUEUED')
 
@@ -186,16 +321,16 @@ class QCOrchestrator extends EventEmitter {
         }
 
         // For FAILED or QUEUED records, update status back to QUEUED for retry
-        if (existingRecord.status === 'FAILED') {
+        if (existingRecord.status === 'FAILED' && recordId) {
           await updateQCStatus(recordId, 'QUEUED')
         }
       }
     }
 
     // Add to processing set
-    this.processingFiles.add(filePath)
+    this.processingFiles.add(processingKey)
 
-    this.jobQueue.push({ filePath, filename, isRetry, recordId })
+    this.jobQueue.push({ filePath, filename, isRetry, recordId, processingKey })
     console.log(
       `[QCOrchestrator] Job queued: ${filename} (Queue: ${this.jobQueue.length}, Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS})`
     )
@@ -239,7 +374,12 @@ class QCOrchestrator extends EventEmitter {
           console.error(`[QCOrchestrator] Error processing job: ${job.filename}`, error)
         } finally {
           this.activeJobs--
-          this.processingFiles.delete(job.filePath)
+          // Remove from processing set using the stored key
+          if (job.processingKey) {
+            this.processingFiles.delete(job.processingKey)
+          } else {
+            this.processingFiles.delete(job.filePath) // Fallback for old jobs
+          }
 
           console.log(
             `[QCOrchestrator] Job completed: ${job.filename} (Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS}, Queue: ${this.jobQueue.length})`
@@ -547,6 +687,7 @@ class QCOrchestrator extends EventEmitter {
 
     const config = getConfig()
     if (config.watchFolders.length > 0) {
+      this.ensureFormatFoldersExist(config.watchFolders)
       startQCWatcher(config.watchFolders)
       console.log('[QCOrchestrator] Watcher restarted with folders from .env')
     }

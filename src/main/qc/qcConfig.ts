@@ -8,10 +8,12 @@ let currentConfig: QCConfig | null = null
 // Load environment variables
 function loadEnvConfig(): QCConfig {
   const watchFolder = process.env.VITE_QC_WATCH_FOLDER || ''
-  
+
   return {
     watchFolders: watchFolder ? [watchFolder] : [],
-    databasePath: watchFolder ? path.join(watchFolder, '.qc', 'qc.db') : path.join(app.getPath('userData'), 'qc', 'qc.db'),
+    databasePath: watchFolder
+      ? path.join(watchFolder, '.qc', 'qc.db')
+      : path.join(app.getPath('userData'), 'qc', 'qc.db'),
     apiUrl: process.env.VITE_QC_API_URL || '',
     apiKey: process.env.VITE_QC_API_KEY || '',
     pollingInterval: parseInt(process.env.VITE_QC_POLLING_INTERVAL || '5000'),
@@ -23,7 +25,7 @@ function loadEnvConfig(): QCConfig {
 // Initialize config from .env
 export function initializeQCConfig(): void {
   currentConfig = loadEnvConfig()
-  
+
   console.log('[QCConfig] Loaded configuration from .env')
   console.log('[QCConfig] Watch folder:', currentConfig.watchFolders[0] || 'Not set')
   console.log('[QCConfig] Database path:', currentConfig.databasePath)
@@ -69,7 +71,7 @@ export function getQCOutputPaths(
   reportDocxPath: string
 } {
   const baseName = path.basename(originalName, path.extname(originalName))
-  
+
   // Store everything in .qc folder for centralized management
   const lockBasePath = getLockBasePath()
   const qcFolder = path.join(lockBasePath, '.qc', 'pdfs', qcId.substring(0, 8))

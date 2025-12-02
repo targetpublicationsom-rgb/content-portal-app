@@ -8,7 +8,7 @@ import { EventEmitter } from 'events'
 import * as path from 'path'
 import type { WorkerMessage, WorkerResponse } from './workers/types'
 
-export type WorkerType = 'word' | 'pandoc' | 'reportParser'
+export type WorkerType = 'word' | 'pandoc' | 'reportParser' | 'wordMerger'
 
 interface WorkerInfo {
   worker: Worker
@@ -43,6 +43,9 @@ export class WorkerPool extends EventEmitter {
 
       // Create Pandoc converter worker
       await this.createWorker('pandoc', path.join(__dirname, 'workers', 'pandoc.worker.js'))
+
+      // Create Word merger worker
+      await this.createWorker('wordMerger', path.join(__dirname, 'workers', 'wordMerger.worker.js'))
 
       // Create Report parser worker
       await this.createWorker(
@@ -120,7 +123,7 @@ export class WorkerPool extends EventEmitter {
           if (response.id === 'init') {
             clearTimeout(readyTimeout)
             worker.off('message', checkReady)
-            
+
             if (response.type === 'success') {
               resolve()
             } else if (response.type === 'error') {
@@ -145,10 +148,10 @@ export class WorkerPool extends EventEmitter {
 
     const { type, restartCount, lastRestartTime } = workerInfo
     const now = Date.now()
-    
+
     // Reset restart count if last restart was more than 60 seconds ago
     const newRestartCount = now - lastRestartTime > 60000 ? 1 : restartCount + 1
-    
+
     // Prevent infinite restart loop - max 3 restarts within 60 seconds
     if (newRestartCount > 3) {
       console.error(
@@ -158,7 +161,7 @@ export class WorkerPool extends EventEmitter {
       this.emit('worker-failed', { workerId, type, reason: 'max_restarts_exceeded' })
       return
     }
-    
+
     console.log(`[WorkerPool] Restarting worker ${workerId} (attempt ${newRestartCount})`)
 
     // Remove old worker
@@ -167,7 +170,7 @@ export class WorkerPool extends EventEmitter {
     try {
       // Create new worker
       await this.createWorker(type, workerPath)
-      
+
       // Update restart tracking
       const newWorkerInfo = Array.from(this.workers.values()).find((w) => w.type === type)
       if (newWorkerInfo) {

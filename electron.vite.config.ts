@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
             index: resolve(__dirname, 'src/main/index.ts'),
             'workers/wordConverter.worker': resolve(__dirname, 'src/main/qc/workers/wordConverter.worker.ts'),
             'workers/pandoc.worker': resolve(__dirname, 'src/main/qc/workers/pandoc.worker.ts'),
+            'workers/wordMerger.worker': resolve(__dirname, 'src/main/qc/workers/wordMerger.worker.ts'),
             'workers/reportParser.worker': resolve(__dirname, 'src/main/qc/workers/reportParser.worker.ts')
           },
           output: {

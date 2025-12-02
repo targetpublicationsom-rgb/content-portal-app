@@ -95,7 +95,10 @@ export function registerQCIpcHandlers(): void {
     try {
       const config = getConfig()
       if (config.watchFolders.length === 0) {
-        return { success: false, error: 'No watch folders configured in .env (VITE_QC_WATCH_FOLDER)' }
+        return {
+          success: false,
+          error: 'No watch folders configured in .env (VITE_QC_WATCH_FOLDER)'
+        }
       }
 
       const orchestrator = getQCOrchestrator()

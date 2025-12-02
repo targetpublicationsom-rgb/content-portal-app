@@ -162,6 +162,33 @@ export default function QCFileList(): React.JSX.Element {
     )
   }
 
+  const getFileTypeBadge = (
+    fileType: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | null
+  ): React.JSX.Element => {
+    if (!fileType || fileType === 'single-file') {
+      return <span className="text-muted-foreground text-xs">—</span>
+    }
+
+    const typeLabels = {
+      theory: { label: 'Theory', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+      'mcqs-solution': {
+        label: 'MCQs+Sol',
+        className: 'bg-green-100 text-green-700 border-green-200'
+      },
+      'merged-mcqs-solution': {
+        label: 'MCQs+Sol (Merged)',
+        className: 'bg-purple-100 text-purple-700 border-purple-200'
+      }
+    }
+
+    const config = typeLabels[fileType]
+    return (
+      <Badge variant="outline" className={config.className}>
+        {config.label}
+      </Badge>
+    )
+  }
+
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString)
     return date.toLocaleString()
@@ -380,18 +407,20 @@ export default function QCFileList(): React.JSX.Element {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[35%]">Filename</TableHead>
-                  <TableHead className="w-[12%]">Status</TableHead>
+                  <TableHead className="w-[25%]">Filename</TableHead>
+                  <TableHead className="w-[15%] hidden xl:table-cell">Chapter</TableHead>
+                  <TableHead className="w-[10%] hidden lg:table-cell">Type</TableHead>
+                  <TableHead className="w-[10%]">Status</TableHead>
                   <TableHead className="w-[8%] text-center">Issues</TableHead>
-                  <TableHead className="w-[15%] hidden lg:table-cell">Processed By</TableHead>
-                  <TableHead className="w-[15%] hidden md:table-cell">Submitted</TableHead>
-                  <TableHead className="w-[15%] text-right">Actions</TableHead>
+                  <TableHead className="w-[12%] hidden lg:table-cell">Processed By</TableHead>
+                  <TableHead className="w-[10%] hidden md:table-cell">Submitted</TableHead>
+                  <TableHead className="w-[10%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {records.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No QC records found
                     </TableCell>
                   </TableRow>
@@ -402,6 +431,16 @@ export default function QCFileList(): React.JSX.Element {
                         <div className="truncate" title={record.original_name}>
                           {record.original_name}
                         </div>
+                      </TableCell>
+                      <TableCell className="hidden xl:table-cell max-w-0">
+                        <div className="truncate" title={record.chapter_name || undefined}>
+                          {record.chapter_name || (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        {getFileTypeBadge(record.file_type)}
                       </TableCell>
                       <TableCell>{getStatusBadge(record.status)}</TableCell>
                       <TableCell className="text-center">

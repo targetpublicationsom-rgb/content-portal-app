@@ -9,7 +9,10 @@ import { getDatabasePath } from './qcConfig'
 let db: sqlite3.Database | null = null
 
 // Helper functions for async database operations
-function runAsync(sql: string, params: unknown[] = []): Promise<{ lastID: number; changes: number }> {
+function runAsync(
+  sql: string,
+  params: unknown[] = []
+): Promise<{ lastID: number; changes: number }> {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'))
@@ -61,7 +64,6 @@ function execAsync(sql: string): Promise<void> {
   })
 }
 
-
 // Initialize SQLite database
 export async function initializeQCDatabase(): Promise<void> {
   const dbPath = getDatabasePath()
@@ -111,7 +113,11 @@ export async function initializeQCDatabase(): Promise<void> {
             external_qc_id TEXT,
             error_message TEXT,
             retry_count INTEGER DEFAULT 0,
-            processed_by TEXT
+            processed_by TEXT,
+            folder_path TEXT,
+            chapter_name TEXT,
+            file_type TEXT,
+            source_files TEXT
           )
         `
 
@@ -120,8 +126,14 @@ export async function initializeQCDatabase(): Promise<void> {
         // Create indexes
         await execAsync('CREATE INDEX IF NOT EXISTS idx_status ON qc_records(status)')
         await execAsync('CREATE INDEX IF NOT EXISTS idx_submitted_at ON qc_records(submitted_at)')
-        await execAsync('CREATE INDEX IF NOT EXISTS idx_external_qc_id ON qc_records(external_qc_id)')
+        await execAsync(
+          'CREATE INDEX IF NOT EXISTS idx_external_qc_id ON qc_records(external_qc_id)'
+        )
         await execAsync('CREATE INDEX IF NOT EXISTS idx_file_path ON qc_records(file_path)')
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_folder_path ON qc_records(folder_path)')
+        await execAsync(
+          'CREATE INDEX IF NOT EXISTS idx_folder_chapter ON qc_records(folder_path, chapter_name, file_type)'
+        )
 
         console.log('[QCStateManager] Database initialized')
         resolve()
@@ -133,7 +145,13 @@ export async function initializeQCDatabase(): Promise<void> {
 }
 
 // Create a new QC record
-export async function createQCRecord(filePath: string): Promise<QCRecord> {
+export async function createQCRecord(
+  filePath: string,
+  folderPath?: string,
+  chapterName?: string,
+  fileType?: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
+  sourceFiles?: string[]
+): Promise<QCRecord> {
   if (!db) throw new Error('Database not initialized')
 
   const username = os.userInfo().username
@@ -158,7 +176,11 @@ export async function createQCRecord(filePath: string): Promise<QCRecord> {
     external_qc_id: null,
     error_message: null,
     retry_count: 0,
-    processed_by: processedBy
+    processed_by: processedBy,
+    folder_path: folderPath || null,
+    chapter_name: chapterName || null,
+    file_type: fileType || 'single-file',
+    source_files: sourceFiles ? JSON.stringify(sourceFiles) : null
   }
 
   await runAsync(
@@ -167,8 +189,9 @@ export async function createQCRecord(filePath: string): Promise<QCRecord> {
       qc_id, file_path, original_name, pdf_path, status, submitted_at,
       completed_at, report_md_path, report_docx_path, qc_score, issues_found,
       issues_low, issues_medium, issues_high,
-      external_qc_id, error_message, retry_count, processed_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      external_qc_id, error_message, retry_count, processed_by,
+      folder_path, chapter_name, file_type, source_files
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     [
       record.qc_id,
@@ -188,7 +211,11 @@ export async function createQCRecord(filePath: string): Promise<QCRecord> {
       record.external_qc_id,
       record.error_message,
       record.retry_count,
-      record.processed_by
+      record.processed_by,
+      record.folder_path,
+      record.chapter_name,
+      record.file_type,
+      record.source_files
     ]
   )
 
@@ -229,10 +256,7 @@ export async function updateQCPdfPath(qcId: string, pdfPath: string): Promise<vo
 export async function updateQCExternalId(qcId: string, externalQcId: string): Promise<void> {
   if (!db) throw new Error('Database not initialized')
 
-  await runAsync('UPDATE qc_records SET external_qc_id = ? WHERE qc_id = ?', [
-    externalQcId,
-    qcId
-  ])
+  await runAsync('UPDATE qc_records SET external_qc_id = ? WHERE qc_id = ?', [externalQcId, qcId])
 }
 
 // Update QC record with report data
@@ -255,16 +279,7 @@ export async function updateQCReport(
         issues_low = ?, issues_medium = ?, issues_high = ?
     WHERE qc_id = ?
   `,
-    [
-      reportMdPath,
-      reportDocxPath,
-      qcScore,
-      issuesFound,
-      issuesLow,
-      issuesMedium,
-      issuesHigh,
-      qcId
-    ]
+    [reportMdPath, reportDocxPath, qcScore, issuesFound, issuesLow, issuesMedium, issuesHigh, qcId]
   )
   console.log(
     `[QCStateManager] Updated ${qcId} with report data (Issues: ${issuesFound}, Low: ${issuesLow}, Med: ${issuesMedium}, High: ${issuesHigh})`
@@ -272,10 +287,7 @@ export async function updateQCReport(
 }
 
 // Update QC record with partial data
-export async function updateQCRecord(
-  qcId: string,
-  updates: Partial<QCRecord>
-): Promise<void> {
+export async function updateQCRecord(qcId: string, updates: Partial<QCRecord>): Promise<void> {
   if (!db) throw new Error('Database not initialized')
 
   const allowedFields = ['error_message', 'retry_count']
@@ -377,7 +389,8 @@ export async function getQCStats(): Promise<QCStats> {
   byStatus.forEach((row) => {
     const status = row.status.toLowerCase()
     if (status === 'queued') statusCounts.queued = row.count
-    else if (status === 'converting' || status === 'submitting') statusCounts.converting += row.count
+    else if (status === 'converting' || status === 'submitting')
+      statusCounts.converting += row.count
     else if (status === 'processing' || status === 'downloading')
       statusCounts.processing += row.count
     else if (status === 'completed') statusCounts.completed = row.count
@@ -436,6 +449,21 @@ export async function getRecordByFilePath(filePath: string): Promise<QCRecord | 
   const record = await getAsync(
     'SELECT * FROM qc_records WHERE file_path = ? ORDER BY submitted_at DESC LIMIT 1',
     [filePath]
+  )
+
+  return (record as QCRecord) || null
+}
+
+// Get most recent record by folder path and file type (for folder-based duplicate detection)
+export async function getRecordByFolderAndType(
+  folderPath: string,
+  fileType: string
+): Promise<QCRecord | null> {
+  if (!db) throw new Error('Database not initialized')
+
+  const record = await getAsync(
+    'SELECT * FROM qc_records WHERE folder_path = ? AND file_type = ? ORDER BY submitted_at DESC LIMIT 1',
+    [folderPath, fileType]
   )
 
   return (record as QCRecord) || null

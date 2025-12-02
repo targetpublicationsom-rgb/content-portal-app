@@ -6,6 +6,7 @@ export type WorkerMessageType =
   | 'init'
   | 'convert-docx-to-pdf'
   | 'convert-md-to-docx'
+  | 'merge-docx'
   | 'parse-report'
   | 'db-create'
   | 'db-update'
@@ -97,6 +98,25 @@ export interface ParseReportResponse {
     issuesLow: number
     issuesMedium: number
     issuesHigh: number
+  }
+}
+
+// Word Merger Messages
+export interface MergeDocxRequest {
+  id: string
+  type: 'merge-docx'
+  data: {
+    mcqsPath: string
+    solutionPath: string
+    outputPath: string
+  }
+}
+
+export interface MergeDocxResponse {
+  id: string
+  type: 'success'
+  data: {
+    mergedPath: string
   }
 }
 

@@ -28,6 +28,11 @@ export interface QCRecord {
   error_message: string | null
   retry_count: number
   processed_by: string | null // username@hostname
+  // Folder-based processing fields
+  folder_path: string | null
+  chapter_name: string | null
+  file_type: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | null
+  source_files: string | null // JSON array of source file names
 }
 
 export interface QCConfig {
