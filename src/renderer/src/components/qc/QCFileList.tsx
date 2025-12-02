@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import 'katex/dist/katex.min.css'
-import markedKatex from 'marked-katex-extension'
+import katex from 'katex'
 
 export default function QCFileList(): React.JSX.Element {
   const location = useLocation()
@@ -55,17 +55,41 @@ export default function QCFileList(): React.JSX.Element {
   const renderedMarkdown = useMemo(() => {
     if (!markdownContent) return ''
     try {
-      // Configure marked with KaTeX extension
-      marked.use(
-        markedKatex({
-          throwOnError: false,
-          output: 'html'
-        })
-      )
-      const html = marked.parse(markdownContent)
+      // Preprocess LaTeX expressions to ensure they're properly formatted
+      let processedContent = markdownContent
+      
+      // Replace inline LaTeX with HTML spans containing KaTeX-rendered content
+      processedContent = processedContent.replace(/\$([^\$]+?)\$/g, (match, latex) => {
+        try {
+          const html = katex.renderToString(latex.trim(), {
+            throwOnError: false,
+            displayMode: false
+          })
+          return html
+        } catch {
+          return match
+        }
+      })
+      
+      // Replace display LaTeX ($$...$$) with KaTeX-rendered content
+      processedContent = processedContent.replace(/\$\$([^\$]+?)\$\$/g, (match, latex) => {
+        try {
+          const html = katex.renderToString(latex.trim(), {
+            throwOnError: false,
+            displayMode: true
+          })
+          return html
+        } catch {
+          return match
+        }
+      })
+      
+      // Parse markdown to HTML
+      const html = marked.parse(processedContent)
+      
       return DOMPurify.sanitize(html as string, {
-        ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac'],
-        ADD_ATTR: ['xmlns', 'encoding']
+        ADD_TAGS: ['span', 'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mtext', 'annotation', 'munderover', 'munder', 'mover'],
+        ADD_ATTR: ['class', 'xmlns', 'encoding', 'display', 'style']
       })
     } catch (err) {
       return markdownContent
