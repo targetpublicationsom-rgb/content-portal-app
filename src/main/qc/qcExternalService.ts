@@ -14,6 +14,7 @@ export interface QCStatusResponse {
   job_id: string
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
   result?: string // Markdown report when COMPLETED
+  issues_count?: number // Total number of issues found
   created_at: string
   updated_at: string
 }

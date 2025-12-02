@@ -4,7 +4,11 @@ import * as fs from 'fs/promises'
 import { WorkerPool } from './WorkerPool'
 import type { WorkerMessage } from './workers/types'
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
-import { getQCExternalService, configureQCExternalService } from './qcExternalService'
+import {
+  getQCExternalService,
+  configureQCExternalService,
+  QCStatusResponse
+} from './qcExternalService'
 import { initializeQCConfig, getConfig, getQCOutputPaths, getLockBasePath } from './qcConfig'
 import {
   initializeQCDatabase,
@@ -150,10 +154,10 @@ class QCOrchestrator extends EventEmitter {
       console.log(`[QCOrchestrator] File already queued/processing, skipping: ${filename}`)
       return
     }
-    
+
     // Create database record immediately with QUEUED status so it's visible in UI
     let recordId: string | null = null
-    
+
     if (!isRetry) {
       // Check if record already exists
       const existingRecord = await getRecordByFilePath(filePath)
@@ -162,33 +166,35 @@ class QCOrchestrator extends EventEmitter {
         const record = await createQCRecord(filePath)
         recordId = record.qc_id
         await updateQCStatus(record.qc_id, 'QUEUED')
-        
+
         // Emit to renderer so UI updates immediately
         this.emitToRenderer('qc:file-detected', { record })
       } else {
         // Use existing record
         recordId = existingRecord.qc_id
-        
+
         // Skip if already completed or currently processing
         if (existingRecord.status === 'COMPLETED') {
           console.log(`[QCOrchestrator] Skipping - already completed: ${filename}`)
           return
         }
-        if (['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING'].includes(existingRecord.status)) {
+        if (
+          ['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING'].includes(existingRecord.status)
+        ) {
           console.log(`[QCOrchestrator] Skipping - already ${existingRecord.status}: ${filename}`)
           return
         }
-        
+
         // For FAILED or QUEUED records, update status back to QUEUED for retry
         if (existingRecord.status === 'FAILED') {
           await updateQCStatus(recordId, 'QUEUED')
         }
       }
     }
-    
+
     // Add to processing set
     this.processingFiles.add(filePath)
-    
+
     this.jobQueue.push({ filePath, filename, isRetry, recordId })
     console.log(
       `[QCOrchestrator] Job queued: ${filename} (Queue: ${this.jobQueue.length}, Active: ${this.activeJobs}/${this.MAX_CONCURRENT_JOBS})`
@@ -281,7 +287,12 @@ class QCOrchestrator extends EventEmitter {
     throw new Error(`Job did not complete within ${maxWaitTime / 1000}s timeout`)
   }
 
-  private async processNewFile(filePath: string, filename: string, _isRetry = false, existingRecordId?: string | null): Promise<void> {
+  private async processNewFile(
+    filePath: string,
+    filename: string,
+    _isRetry = false,
+    existingRecordId?: string | null
+  ): Promise<void> {
     let recordId: string | null = existingRecordId || null
     const lockBasePath = getLockBasePath()
 
@@ -307,7 +318,9 @@ class QCOrchestrator extends EventEmitter {
           recordId = existingRecord.qc_id
         } else {
           // This should never happen - enqueueJob always creates a record
-          console.error(`[QCOrchestrator] CRITICAL: No record found for ${filename} - this should not happen!`)
+          console.error(
+            `[QCOrchestrator] CRITICAL: No record found for ${filename} - this should not happen!`
+          )
           throw new Error('No database record found - file was not properly queued')
         }
       }
@@ -438,7 +451,7 @@ class QCOrchestrator extends EventEmitter {
       const status = await service.getQCStatus(record.external_qc_id)
 
       if (status.status === 'COMPLETED' && status.result) {
-        await this.handleQCComplete(record, status.result)
+        await this.handleQCComplete(record, status)
       } else if (status.status === 'FAILED') {
         await updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
         notifyQCFailed(record.original_name, 'QC processing failed')
@@ -458,8 +471,13 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
-  private async handleQCComplete(record: QCRecord, reportMarkdown: string): Promise<void> {
+  private async handleQCComplete(record: QCRecord, status: QCStatusResponse): Promise<void> {
     try {
+      const reportMarkdown = status.result
+      if (!reportMarkdown) {
+        throw new Error('No report data in completed status')
+      }
+
       const paths = getQCOutputPaths(record.qc_id, record.original_name)
 
       // Save MD report
@@ -468,34 +486,8 @@ class QCOrchestrator extends EventEmitter {
 
       await fs.writeFile(paths.reportMdPath, reportMarkdown, 'utf-8')
 
-      // Parse issues count using report parser worker
-      let issuesFound = 0
-      let issuesLow = 0
-      let issuesMedium = 0
-      let issuesHigh = 0
-
-      try {
-        if (this.workerPool) {
-          const parseMessage: WorkerMessage = {
-            id: `parse-${Date.now()}`,
-            type: 'parse-report',
-            data: { reportPath: paths.reportMdPath }
-          }
-          const parseResponse = await this.workerPool.dispatchJob('reportParser', parseMessage)
-          const parsedData = parseResponse.data as {
-            issuesFound: number
-            issuesLow: number
-            issuesMedium: number
-            issuesHigh: number
-          }
-          issuesFound = parsedData.issuesFound
-          issuesLow = parsedData.issuesLow
-          issuesMedium = parsedData.issuesMedium
-          issuesHigh = parsedData.issuesHigh
-        }
-      } catch (parseError) {
-        console.warn('[QCOrchestrator] Could not parse issues from report:', parseError)
-      }
+      // Get issues count from API response
+      const issuesFound = status.issues_count || 0
 
       // Update record with report data (no score, no DOCX path - conversion on-demand)
       await updateQCReport(
@@ -504,9 +496,9 @@ class QCOrchestrator extends EventEmitter {
         null, // DOCX path set to null - will be converted on-demand when user clicks button
         null,
         issuesFound,
-        issuesLow,
-        issuesMedium,
-        issuesHigh
+        0, // issues_low - not provided by API
+        0, // issues_medium - not provided by API
+        0 // issues_high - not provided by API
       )
 
       await updateQCStatus(record.qc_id, 'COMPLETED')
