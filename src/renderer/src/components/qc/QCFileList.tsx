@@ -146,12 +146,13 @@ export default function QCFileList(): React.JSX.Element {
   const getStatusBadge = (status: QCStatus): React.JSX.Element => {
     const variants: Record<QCStatus, { className: string; label: string }> = {
       QUEUED: { className: 'bg-gray-500', label: 'Queued' },
-      CONVERTING: { className: 'bg-blue-500', label: 'Converting' },
-      SUBMITTING: { className: 'bg-indigo-500', label: 'Submitting' },
-      PROCESSING: { className: 'bg-purple-500', label: 'Processing' },
+      CONVERTING: { className: 'bg-indigo-500', label: 'Converting' },
+      SUBMITTING: { className: 'bg-purple-500', label: 'Submitting' },
+      PROCESSING: { className: 'bg-blue-500', label: 'Processing' },
       DOWNLOADING: { className: 'bg-orange-500', label: 'Downloading' },
       COMPLETED: { className: 'bg-green-500', label: 'Completed' },
-      FAILED: { className: 'bg-red-500', label: 'Failed' }
+      FAILED: { className: 'bg-red-500', label: 'Failed' },
+      NUMBERING_FAILED: { className: 'bg-yellow-600', label: 'Numbering Failed' }
     }
 
     const variant = variants[status]
@@ -372,6 +373,7 @@ export default function QCFileList(): React.JSX.Element {
                   <SelectItem value="DOWNLOADING">Downloading</SelectItem>
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                   <SelectItem value="FAILED">Failed</SelectItem>
+                  <SelectItem value="NUMBERING_FAILED">Numbering Failed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -410,7 +412,7 @@ export default function QCFileList(): React.JSX.Element {
                   <TableHead className="w-[25%]">Filename</TableHead>
                   <TableHead className="w-[15%] hidden xl:table-cell">Chapter</TableHead>
                   <TableHead className="w-[10%] hidden lg:table-cell">Type</TableHead>
-                  <TableHead className="w-[10%]">Status</TableHead>
+                  <TableHead className="w-[13%]">Status</TableHead>
                   <TableHead className="w-[8%] text-center">Issues</TableHead>
                   <TableHead className="w-[12%] hidden lg:table-cell">Processed By</TableHead>
                   <TableHead className="w-[10%] hidden md:table-cell">Submitted</TableHead>
@@ -469,7 +471,9 @@ export default function QCFileList(): React.JSX.Element {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
-                          {(record.status === 'FAILED' || record.status === 'COMPLETED') && (
+                          {(record.status === 'FAILED' ||
+                            record.status === 'NUMBERING_FAILED' ||
+                            record.status === 'COMPLETED') && (
                             <Button
                               variant="ghost"
                               size="icon"

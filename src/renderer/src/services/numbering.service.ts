@@ -3,13 +3,11 @@ import type { NumberingValidationResult, NumberingValidationResponse } from '../
 export const numberingService = {
     async validateNumbering(
         questionsPath: string,
-        solutionsPath: string,
-        expectedCount: number = 444
+        solutionsPath: string
     ): Promise<NumberingValidationResult> {
         const response = (await window.api.numbering.validate(
             questionsPath,
-            solutionsPath,
-            expectedCount
+            solutionsPath
         )) as NumberingValidationResponse
 
         if (!response.success) {

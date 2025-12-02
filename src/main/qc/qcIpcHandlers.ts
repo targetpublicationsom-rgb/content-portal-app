@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import * as path from 'path'
 import { getQCOrchestrator } from './qcOrchestrator'
 import {
   getQCRecord,
@@ -13,6 +14,7 @@ import { testConnection } from './qcExternalService'
 import { getQCWatcher, isQCWatcherActive } from './qcWatcher'
 import type { QCFilters } from '../../shared/qc.types'
 import type { WorkerMessage } from './workers/types'
+import type { WatchEvent } from './qcWatcher'
 import * as fs from 'fs/promises'
 
 export function registerQCIpcHandlers(): void {
@@ -152,6 +154,68 @@ export function registerQCIpcHandlers(): void {
 
   ipcMain.handle('qc:retry-record', async (_event, qcId: string) => {
     try {
+      const record = await getQCRecord(qcId)
+      if (!record) {
+        return { success: false, error: 'Record not found' }
+      }
+
+      // Handle NUMBERING_FAILED retry specially
+      if (record.status === 'NUMBERING_FAILED') {
+        console.log('[QC IPC] Retrying NUMBERING_FAILED record:', qcId)
+
+        if (!record.folder_path || !record.source_files) {
+          return {
+            success: false,
+            error: 'Cannot retry: missing folder path or source files'
+          }
+        }
+
+        // Parse source files
+        const sourceFiles = JSON.parse(record.source_files) as string[]
+        if (sourceFiles.length !== 2) {
+          return {
+            success: false,
+            error: 'Cannot retry: expected 2 source files (MCQs and Solution)'
+          }
+        }
+
+        // Update record status to QUEUED for retry (keep record visible)
+        await updateQCRecord(qcId, {
+          status: 'QUEUED',
+          error_message: null,
+          retry_count: record.retry_count + 1
+        })
+
+        // Reconstruct file paths
+        const mcqsPath = path.join(record.folder_path, sourceFiles[0])
+        const solutionPath = path.join(record.folder_path, sourceFiles[1])
+
+        // Create WatchEvent to trigger merge with validation
+        const watchEvent: WatchEvent = {
+          type: 'add',
+          filePath: mcqsPath,
+          filename: sourceFiles[0],
+          timestamp: new Date().toISOString(),
+          folderPath: record.folder_path,
+          chapterName: record.chapter_name || 'Unknown',
+          fileType: (record.file_type || 'mcqs-solution') as
+            | 'theory'
+            | 'mcqs-solution'
+            | 'single-file',
+          relatedFiles: {
+            mcqs: mcqsPath,
+            solution: solutionPath
+          }
+        }
+
+        // Call enqueueJobWithMerge with existing record ID
+        const orchestrator = getQCOrchestrator()
+        await orchestrator.enqueueJobWithMerge(watchEvent, qcId)
+
+        return { success: true }
+      }
+
+      // Handle normal retry for other failed records
       const orchestrator = getQCOrchestrator()
       await orchestrator.retryRecord(qcId)
       return { success: true }

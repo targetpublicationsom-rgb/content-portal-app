@@ -3,6 +3,7 @@ import { EventEmitter } from 'events'
 import * as fs from 'fs/promises'
 import * as fsSync from 'fs'
 import * as path from 'path'
+import { validateNumbering } from '../numberingChecker'
 import { WorkerPool } from './WorkerPool'
 import type { WorkerMessage } from './workers/types'
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
@@ -191,7 +192,7 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
-  private async enqueueJobWithMerge(event: WatchEvent): Promise<void> {
+  async enqueueJobWithMerge(event: WatchEvent, existingQcId?: string): Promise<void> {
     if (!event.relatedFiles?.mcqs || !event.relatedFiles?.solution || !event.folderPath) {
       console.error('[QCOrchestrator] Invalid merge event - missing files')
       return
@@ -200,15 +201,80 @@ class QCOrchestrator extends EventEmitter {
     const { mcqs, solution } = event.relatedFiles
     const { folderPath, chapterName, fileType } = event
 
-    // Check if already processed
-    const existingRecord = await getRecordByFolderAndType(folderPath, fileType!)
-    if (existingRecord && existingRecord.status === 'COMPLETED') {
-      console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
-      return
+    // Check if already processed (skip if not a retry)
+    if (!existingQcId) {
+      const existingRecord = await getRecordByFolderAndType(folderPath, fileType!)
+      if (existingRecord && existingRecord.status === 'COMPLETED') {
+        console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
+        return
+      }
     }
 
     try {
-      // Create merged file path in .qc folder
+      // Step 1: Validate numbering before merge
+      console.log(`[QCOrchestrator] Validating numbering for: ${chapterName}`)
+      const validationResult = await validateNumbering(mcqs, solution)
+
+      if (validationResult.status !== 'passed') {
+        console.log(`[QCOrchestrator] Numbering validation failed for: ${chapterName}`)
+
+        let record: QCRecord
+        if (existingQcId) {
+          // Retry case - update existing record
+          const existingRecord = await getQCRecord(existingQcId)
+          if (!existingRecord) {
+            throw new Error('Existing record not found for retry')
+          }
+          record = existingRecord
+          console.log(`[QCOrchestrator] Updating existing record for retry: ${existingQcId}`)
+        } else {
+          // New validation failure - create record
+          const sourceFiles = [path.basename(mcqs), path.basename(solution)]
+          // Use MCQs file path as the display file (since it represents the merged intent)
+          record = await createQCRecord(
+            mcqs,
+            folderPath,
+            chapterName,
+            fileType as 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
+            sourceFiles
+          )
+          console.log(`[QCOrchestrator] Created new record for validation failure: ${record.qc_id}`)
+        }
+
+        // Format validation issues for error message
+        const issuesText = validationResult.issues.join('\n')
+
+        await updateQCRecord(record.qc_id, {
+          status: 'NUMBERING_FAILED',
+          error_message: `Numbering validation failed:\n${issuesText}`,
+          completed_at: new Date().toISOString()
+        })
+
+        // Get updated record to emit
+        const updatedRecord = await getQCRecord(record.qc_id)
+
+        // Emit event to renderer
+        this.emitToRenderer('qc:numbering-validation-failed', {
+          qcId: record.qc_id,
+          chapterName,
+          issues: validationResult.issues,
+          summary: validationResult.summary
+        })
+
+        // Emit status update so UI refreshes
+        if (updatedRecord) {
+          this.emitToRenderer('qc:status-update', { record: updatedRecord })
+        }
+
+        console.log(
+          `[QCOrchestrator] NUMBERING_FAILED record ${existingQcId ? 'updated' : 'created'} for: ${chapterName}`
+        )
+        return
+      }
+
+      console.log(`[QCOrchestrator] ✓ Numbering validation passed for: ${chapterName}`)
+
+      // Step 2: Create merged file path in .qc folder
       const qcFolder = path.join(folderPath, '.qc')
       if (!fsSync.existsSync(qcFolder)) {
         fsSync.mkdirSync(qcFolder, { recursive: true })
@@ -249,7 +315,25 @@ class QCOrchestrator extends EventEmitter {
         filename: path.basename(mergedFilePath)
       }
 
-      await this.enqueueJob(mergedFilePath, path.basename(mergedFilePath), false, mergedEvent)
+      if (existingQcId) {
+        // Retry case - update existing record with new merged file
+        await updateQCRecord(existingQcId, {
+          file_path: mergedFilePath,
+          original_name: path.basename(mergedFilePath),
+          status: 'QUEUED'
+        })
+        console.log(`[QCOrchestrator] Updated existing record with merged file: ${existingQcId}`)
+        await this.enqueueJob(
+          mergedFilePath,
+          path.basename(mergedFilePath),
+          true,
+          mergedEvent,
+          existingQcId
+        )
+      } else {
+        // Normal flow - create new record
+        await this.enqueueJob(mergedFilePath, path.basename(mergedFilePath), false, mergedEvent)
+      }
     } catch (error) {
       console.error(`[QCOrchestrator] Merge failed for ${chapterName}:`, error)
       this.emitToRenderer('qc:error', {
@@ -258,11 +342,12 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
-  private async enqueueJob(
+  async enqueueJob(
     filePath: string,
     filename: string,
     isRetry = false,
-    event?: WatchEvent
+    event?: WatchEvent,
+    existingQcId?: string
   ): Promise<void> {
     // For folder-based files, check by folder+type; for single files, check by path
     const folderPath = event?.folderPath
@@ -278,7 +363,15 @@ class QCOrchestrator extends EventEmitter {
     // Create database record immediately with QUEUED status so it's visible in UI
     let recordId: string | null = null
 
-    if (!isRetry) {
+    if (existingQcId) {
+      // Use existing record (retry case for numbering validation)
+      const existingRecord = await getQCRecord(existingQcId)
+      if (!existingRecord) {
+        throw new Error('Existing record not found for processing')
+      }
+      recordId = existingQcId
+      console.log(`[QCOrchestrator] Using existing record for processing: ${existingQcId}`)
+    } else if (!isRetry) {
       // Check if record already exists
       const existingRecord = folderPath
         ? await getRecordByFolderAndType(folderPath, fileType)

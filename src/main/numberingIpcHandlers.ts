@@ -5,14 +5,13 @@ import type { NumberingValidationResponse } from '../shared/numbering.types'
 export function registerNumberingIpcHandlers(): void {
     ipcMain.handle(
         'numbering:validate',
-        async (_event, questionsPath: string, solutionsPath: string, expectedCount: number = 444) => {
+        async (_event, questionsPath: string, solutionsPath: string) => {
             try {
                 console.log('[Numbering IPC] Validation request received')
                 console.log('[Numbering IPC] Questions:', questionsPath)
                 console.log('[Numbering IPC] Solutions:', solutionsPath)
-                console.log('[Numbering IPC] Expected count:', expectedCount)
 
-                const result = await validateNumbering(questionsPath, solutionsPath, expectedCount)
+                const result = await validateNumbering(questionsPath, solutionsPath)
 
                 const response: NumberingValidationResponse = {
                     success: true,

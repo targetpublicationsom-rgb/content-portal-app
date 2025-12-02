@@ -290,7 +290,14 @@ export async function updateQCReport(
 export async function updateQCRecord(qcId: string, updates: Partial<QCRecord>): Promise<void> {
   if (!db) throw new Error('Database not initialized')
 
-  const allowedFields = ['error_message', 'retry_count']
+  const allowedFields = [
+    'status',
+    'error_message',
+    'retry_count',
+    'completed_at',
+    'file_path',
+    'original_name'
+  ]
   const fields = Object.keys(updates).filter((key) => allowedFields.includes(key))
 
   if (fields.length === 0) return
@@ -394,7 +401,7 @@ export async function getQCStats(): Promise<QCStats> {
     else if (status === 'processing' || status === 'downloading')
       statusCounts.processing += row.count
     else if (status === 'completed') statusCounts.completed = row.count
-    else if (status === 'failed') statusCounts.failed = row.count
+    else if (status === 'failed' || status === 'numbering_failed') statusCounts.failed += row.count
   })
 
   const todayStart = new Date()

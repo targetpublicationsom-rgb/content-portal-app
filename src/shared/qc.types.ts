@@ -8,6 +8,7 @@ export type QCStatus =
   | 'DOWNLOADING'
   | 'COMPLETED'
   | 'FAILED'
+  | 'NUMBERING_FAILED'
 
 export interface QCRecord {
   qc_id: string

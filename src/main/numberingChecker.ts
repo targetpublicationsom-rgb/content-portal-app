@@ -39,7 +39,6 @@ function getPandocPath(): string {
 export async function validateNumbering(
     questionsPath: string,
     solutionsPath: string,
-    expectedCount: number = 444
 ): Promise<NumberingValidationResult> {
     return new Promise((resolve, reject) => {
         const checkerPath = getNumberingCheckerPath()
@@ -48,7 +47,6 @@ export async function validateNumbering(
         console.log('[Numbering Checker] Starting validation...')
         console.log('[Numbering Checker] Questions:', questionsPath)
         console.log('[Numbering Checker] Solutions:', solutionsPath)
-        console.log('[Numbering Checker] Expected count:', expectedCount)
         console.log('[Numbering Checker] Checker path:', checkerPath)
         console.log('[Numbering Checker] Pandoc path:', pandocPath)
 
@@ -56,7 +54,6 @@ export async function validateNumbering(
         const args = [
             questionsPath,
             solutionsPath,
-            '--expected', expectedCount.toString(),
             '--json'
         ]
 

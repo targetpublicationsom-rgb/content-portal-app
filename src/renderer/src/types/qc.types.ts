@@ -8,6 +8,7 @@ export type QCStatus =
   | 'DOWNLOADING' // Downloading QC report
   | 'COMPLETED' // QC complete, report available
   | 'FAILED' // Process failed at any stage
+  | 'NUMBERING_FAILED' // Numbering validation failed before merge
 
 export interface QCRecord {
   qc_id: string // UUID
