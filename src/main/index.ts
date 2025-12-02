@@ -746,3 +746,19 @@ ipcMain.handle('dialog:show-open-dialog', async (_, options: Electron.OpenDialog
   }
   return { canceled: true, filePaths: [] }
 })
+
+ipcMain.handle('dialog:show-save-dialog', async (_, options: Electron.SaveDialogOptions) => {
+  if (mainWindow) {
+    return await dialog.showSaveDialog(mainWindow, options)
+  }
+  return { canceled: true }
+})
+
+ipcMain.handle('file:copy', async (_, sourcePath: string, destPath: string) => {
+  try {
+    await fsPromises.copyFile(sourcePath, destPath)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Copy failed' }
+  }
+})

@@ -5,12 +5,15 @@ import {
   getQCRecords,
   getQCStats,
   deleteQCRecord,
-  deleteAllQCRecords
+  deleteAllQCRecords,
+  updateQCRecord
 } from './qcStateManager'
-import { getConfig } from './qcConfig'
+import { getConfig, getQCOutputPaths } from './qcConfig'
 import { testConnection } from './qcExternalService'
 import { getQCWatcher, isQCWatcherActive } from './qcWatcher'
 import type { QCFilters } from '../../shared/qc.types'
+import type { WorkerMessage } from './workers/types'
+import * as fs from 'fs/promises'
 
 export function registerQCIpcHandlers(): void {
   ipcMain.handle(
@@ -156,6 +159,74 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  // Convert report to DOCX on-demand
+  ipcMain.handle('qc:convert-report-to-docx', async (_event, qcId: string) => {
+    try {
+      const orchestrator = getQCOrchestrator()
+      if (!orchestrator) {
+        return { success: false, error: 'QC orchestrator not initialized' }
+      }
+
+      const record = await getQCRecord(qcId)
+      if (!record) {
+        return { success: false, error: 'QC record not found' }
+      }
+
+      if (!record.report_md_path) {
+        return { success: false, error: 'No markdown report found' }
+      }
+
+      // Check if MD file exists
+      try {
+        await fs.access(record.report_md_path)
+      } catch {
+        return { success: false, error: 'Markdown report file not found on disk' }
+      }
+
+      const paths = getQCOutputPaths(record.qc_id, record.original_name)
+
+      // Check if DOCX already exists
+      try {
+        await fs.access(paths.reportDocxPath)
+        console.log('[QC IPC] DOCX already exists:', paths.reportDocxPath)
+        return {
+          success: true,
+          data: { docxPath: paths.reportDocxPath, alreadyExists: true }
+        }
+      } catch {
+        // DOCX doesn't exist, need to convert
+      }
+
+      // Convert using Pandoc worker
+      console.log('[QC IPC] Converting MD to DOCX on-demand for:', qcId)
+      const workerPool = orchestrator.getWorkerPool()
+      if (!workerPool) {
+        return { success: false, error: 'Worker pool not available' }
+      }
+
+      const pandocMessage: WorkerMessage = {
+        id: `pandoc-on-demand-${Date.now()}`,
+        type: 'convert-md-to-docx',
+        data: { mdPath: record.report_md_path, docxPath: paths.reportDocxPath }
+      }
+
+      await workerPool.dispatchJob('pandoc', pandocMessage)
+
+      // Update database with DOCX path
+      await updateQCRecord(qcId, { report_docx_path: paths.reportDocxPath })
+
+      console.log('[QC IPC] DOCX conversion completed:', paths.reportDocxPath)
+      return {
+        success: true,
+        data: { docxPath: paths.reportDocxPath, alreadyExists: false }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to convert report'
+      console.error('[QC IPC] Error converting report:', error)
+      return { success: false, error: message }
+    }
+  })
+
   console.log('[QC IPC] Handlers registered')
 }
 
@@ -171,6 +242,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:delete-record')
   ipcMain.removeHandler('qc:delete-all-records')
   ipcMain.removeHandler('qc:retry-record')
+  ipcMain.removeHandler('qc:convert-report-to-docx')
 
   console.log('[QC IPC] Handlers unregistered')
 }

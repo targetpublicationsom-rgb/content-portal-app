@@ -6,7 +6,6 @@ export type QCStatus =
   | 'SUBMITTING' // Uploading PDF to external API
   | 'PROCESSING' // External API running QC
   | 'DOWNLOADING' // Downloading QC report
-  | 'CONVERTING_REPORT' // Converting MD to DOCX
   | 'COMPLETED' // QC complete, report available
   | 'FAILED' // Process failed at any stage
 

@@ -174,7 +174,7 @@ class QCOrchestrator extends EventEmitter {
           console.log(`[QCOrchestrator] Skipping - already completed: ${filename}`)
           return
         }
-        if (['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING', 'CONVERTING_REPORT'].includes(existingRecord.status)) {
+        if (['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING'].includes(existingRecord.status)) {
           console.log(`[QCOrchestrator] Skipping - already ${existingRecord.status}: ${filename}`)
           return
         }
@@ -468,23 +468,6 @@ class QCOrchestrator extends EventEmitter {
 
       await fs.writeFile(paths.reportMdPath, reportMarkdown, 'utf-8')
 
-      // Convert MD to DOCX using worker
-      await updateQCStatus(record.qc_id, 'CONVERTING_REPORT')
-      this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTING_REPORT' })
-
-      try {
-        if (this.workerPool) {
-          const pandocMessage: WorkerMessage = {
-            id: `pandoc-${Date.now()}`,
-            type: 'convert-md-to-docx',
-            data: { mdPath: paths.reportMdPath, docxPath: paths.reportDocxPath }
-          }
-          await this.workerPool.dispatchJob('pandoc', pandocMessage)
-        }
-      } catch (pandocError) {
-        console.warn('[QCOrchestrator] Pandoc conversion failed:', pandocError)
-      }
-
       // Parse issues count using report parser worker
       let issuesFound = 0
       let issuesLow = 0
@@ -514,11 +497,11 @@ class QCOrchestrator extends EventEmitter {
         console.warn('[QCOrchestrator] Could not parse issues from report:', parseError)
       }
 
-      // Update record with report data (no score)
+      // Update record with report data (no score, no DOCX path - conversion on-demand)
       await updateQCReport(
         record.qc_id,
         paths.reportMdPath,
-        paths.reportDocxPath,
+        null, // DOCX path set to null - will be converted on-demand when user clicks button
         null,
         issuesFound,
         issuesLow,
@@ -618,6 +601,10 @@ class QCOrchestrator extends EventEmitter {
 
   getMaxConcurrentJobs(): number {
     return this.MAX_CONCURRENT_JOBS
+  }
+
+  getWorkerPool(): WorkerPool | null {
+    return this.workerPool
   }
 }
 

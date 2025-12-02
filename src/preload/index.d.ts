@@ -77,6 +77,7 @@ interface API {
     deleteRecord: (qcId: string) => Promise<any>
     deleteAllRecords: () => Promise<any>
     retryRecord: (qcId: string) => Promise<any>
+    convertReportToDocx: (qcId: string) => Promise<any>
     onFileDetected: (callback: (event: any, data: any) => void) => () => void
     onStatusUpdate: (callback: (event: any, data: any) => void) => () => void
     onQueueUpdate: (callback: (event: any, data: any) => void) => () => void
@@ -90,6 +91,10 @@ interface API {
   }
   dialog: {
     showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths: string[] }>
+    showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath?: string }>
+  }
+  file: {
+    copy: (sourcePath: string, destPath: string) => Promise<{ success: boolean; error?: string }>
   }
 }
 

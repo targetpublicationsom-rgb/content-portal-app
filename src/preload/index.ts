@@ -74,6 +74,7 @@ const api = {
     deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
     deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
     retryRecord: (qcId: string) => ipcRenderer.invoke('qc:retry-record', qcId),
+    convertReportToDocx: (qcId: string) => ipcRenderer.invoke('qc:convert-report-to-docx', qcId),
     getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
     onFileDetected: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:file-detected', callback)
@@ -104,7 +105,11 @@ const api = {
     openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path)
   },
   dialog: {
-    showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:show-open-dialog', options)
+    showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:show-open-dialog', options),
+    showSaveDialog: (options: any) => ipcRenderer.invoke('dialog:show-save-dialog', options)
+  },
+  file: {
+    copy: (sourcePath: string, destPath: string) => ipcRenderer.invoke('file:copy', sourcePath, destPath)
   }
 }
 

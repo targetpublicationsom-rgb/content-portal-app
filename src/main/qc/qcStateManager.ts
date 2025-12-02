@@ -239,7 +239,7 @@ export async function updateQCExternalId(qcId: string, externalQcId: string): Pr
 export async function updateQCReport(
   qcId: string,
   reportMdPath: string,
-  reportDocxPath: string,
+  reportDocxPath: string | null,
   qcScore: number | null,
   issuesFound: number,
   issuesLow: number,
@@ -378,11 +378,7 @@ export async function getQCStats(): Promise<QCStats> {
     const status = row.status.toLowerCase()
     if (status === 'queued') statusCounts.queued = row.count
     else if (status === 'converting' || status === 'submitting') statusCounts.converting += row.count
-    else if (
-      status === 'processing' ||
-      status === 'downloading' ||
-      status === 'converting_report'
-    )
+    else if (status === 'processing' || status === 'downloading')
       statusCounts.processing += row.count
     else if (status === 'completed') statusCounts.completed = row.count
     else if (status === 'failed') statusCounts.failed = row.count

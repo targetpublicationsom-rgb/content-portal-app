@@ -6,7 +6,6 @@ export type QCStatus =
   | 'SUBMITTING'
   | 'PROCESSING'
   | 'DOWNLOADING'
-  | 'CONVERTING_REPORT'
   | 'COMPLETED'
   | 'FAILED'
 
