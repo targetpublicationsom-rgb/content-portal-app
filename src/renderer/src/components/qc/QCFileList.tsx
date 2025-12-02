@@ -487,9 +487,9 @@ export default function QCFileList(): React.JSX.Element {
                                 size="icon"
                                 className="h-8 w-8"
                                 onClick={() => viewMarkdownReport(record)}
-                                title="View Markdown Report"
+                                title="View Report"
                               >
-                                <FileText className="h-4 w-4 text-blue-500" />
+                                <FileText className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -497,16 +497,12 @@ export default function QCFileList(): React.JSX.Element {
                                 className="h-8 w-8"
                                 onClick={() => handleConvertAndDownloadDocx(record)}
                                 disabled={convertingReports.has(record.qc_id)}
-                                title={
-                                  record.report_docx_path
-                                    ? 'Download DOCX Report'
-                                    : 'Convert to DOCX & Download'
-                                }
+                                title="Download Report"
                               >
                                 {convertingReports.has(record.qc_id) ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <FileDown className="h-4 w-4 text-green-500" />
+                                  <FileDown className="h-4 w-4" />
                                 )}
                               </Button>
                             </>
