@@ -135,11 +135,11 @@ class QCWatcher extends EventEmitter {
 
     // Analyze path structure
     if (pathParts.length === 0) {
-      // File is directly in watch folder root - single file
-      this.handleSingleFile(filePath, filename)
+      // File is directly in watch folder root - ignore
+      console.log(`[QCWatcher] Ignoring file at root level: ${filename}`)
+      return
     } else if (pathParts.length === 1) {
-      // File is one level deep - could be single file in a folder
-      // Check if folder is a format folder (two-file format / three-file format)
+      // File is one level deep - must check if it's in a format folder
       const folderName = pathParts[0].toLowerCase()
       if (
         folderName.includes('two-file') ||
@@ -148,38 +148,35 @@ class QCWatcher extends EventEmitter {
         folderName.includes('3-file')
       ) {
         // This is a format folder but file is directly in it (not in chapter subfolder)
-        // Treat as single file
-        this.handleSingleFile(filePath, filename)
+        // Ignore - files must be in chapter subfolders
+        console.log(`[QCWatcher] Ignoring file directly in format folder: ${filename}`)
+        return
       } else {
-        // Regular chapter folder at root level
-        this.handleChapterFolderFile(filePath, parentDir, filename, null)
+        // Not a format folder - ignore
+        console.log(`[QCWatcher] Ignoring file not in format folder structure: ${filename}`)
+        return
       }
     } else if (pathParts.length >= 2) {
-      // File is two or more levels deep - format folder / chapter folder structure
-      const formatFolder = pathParts[0]
+      // File is two or more levels deep - check if in format folder structure
+      const formatFolder = pathParts[0].toLowerCase()
+      
+      // Only process if in two-file-format or three-file-format folder
+      if (
+        !formatFolder.includes('two-file') &&
+        !formatFolder.includes('three-file') &&
+        !formatFolder.includes('2-file') &&
+        !formatFolder.includes('3-file')
+      ) {
+        console.log(`[QCWatcher] Ignoring file not in two/three-file format folder: ${filename}`)
+        return
+      }
+
       const chapterFolder = pathParts[pathParts.length - 1]
       const chapterFolderPath = parentDir
 
-      console.log(`[QCWatcher] Format: ${formatFolder}, Chapter: ${chapterFolder}`)
-      this.handleChapterFolderFile(filePath, chapterFolderPath, filename, formatFolder)
+      console.log(`[QCWatcher] Format: ${pathParts[0]}, Chapter: ${chapterFolder}`)
+      this.handleChapterFolderFile(filePath, chapterFolderPath, filename, pathParts[0])
     }
-  }
-
-  private handleSingleFile(filePath: string, filename: string): void {
-    console.log(`[QCWatcher] Processing single file: ${filename}`)
-
-    // Mark as recently processed
-    this.recentlyProcessedFiles.set(filePath, Date.now())
-
-    const event: WatchEvent = {
-      type: 'add',
-      filePath,
-      filename,
-      timestamp: new Date().toISOString(),
-      fileType: 'single-file'
-    }
-
-    this.emit('file-detected', event)
   }
 
   private handleChapterFolderFile(

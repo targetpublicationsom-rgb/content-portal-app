@@ -56,6 +56,12 @@ export default function QCFileList(): React.JSX.Element {
   const renderedMarkdown = useMemo(() => {
     if (!markdownContent) return ''
     try {
+      // Configure marked for better rendering
+      marked.setOptions({
+        breaks: true,
+        gfm: true
+      })
+
       // Preprocess LaTeX expressions to ensure they're properly formatted
       let processedContent = markdownContent
       
@@ -85,15 +91,17 @@ export default function QCFileList(): React.JSX.Element {
         }
       })
       
-      // Parse markdown to HTML
-      const html = marked.parse(processedContent)
+      // Parse markdown to HTML - use marked.parse() which returns string synchronously for simple markdown
+      const html = marked.parse(processedContent, { async: false }) as string
       
-      return DOMPurify.sanitize(html as string, {
+      return DOMPurify.sanitize(html, {
         ADD_TAGS: ['span', 'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mtext', 'annotation', 'munderover', 'munder', 'mover'],
         ADD_ATTR: ['class', 'xmlns', 'encoding', 'display', 'style']
       })
     } catch (err) {
-      return markdownContent
+      console.error('[QCFileList] Error rendering markdown:', err)
+      // Return escaped HTML as fallback
+      return `<pre>${markdownContent}</pre>`
     }
   }, [markdownContent])
 
