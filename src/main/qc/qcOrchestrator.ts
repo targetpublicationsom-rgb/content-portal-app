@@ -208,6 +208,10 @@ class QCOrchestrator extends EventEmitter {
         console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
         return
       }
+      if (existingRecord && existingRecord.status === 'FAILED') {
+        console.log(`[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${chapterName} (${fileType})`)
+        return
+      }
     }
 
     try {
@@ -401,9 +405,13 @@ class QCOrchestrator extends EventEmitter {
         // Use existing record
         recordId = existingRecord.qc_id
 
-        // Skip if already completed or currently processing
+        // Skip if already completed, failed, or currently processing
         if (existingRecord.status === 'COMPLETED') {
           console.log(`[QCOrchestrator] Skipping - already completed: ${filename}`)
+          return
+        }
+        if (existingRecord.status === 'FAILED') {
+          console.log(`[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${filename}`)
           return
         }
         if (
@@ -411,11 +419,6 @@ class QCOrchestrator extends EventEmitter {
         ) {
           console.log(`[QCOrchestrator] Skipping - already ${existingRecord.status}: ${filename}`)
           return
-        }
-
-        // For FAILED or QUEUED records, update status back to QUEUED for retry
-        if (existingRecord.status === 'FAILED' && recordId) {
-          await updateQCStatus(recordId, 'QUEUED')
         }
       }
     }
