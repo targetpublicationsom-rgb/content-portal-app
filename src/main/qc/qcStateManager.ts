@@ -366,7 +366,11 @@ export async function getQCRecords(
     }
   }
 
-  sql += ' ORDER BY submitted_at DESC LIMIT ? OFFSET ?'
+  // Order by: active jobs first (PROCESSING, CONVERTING, SUBMITTING), then by submission time
+  sql += ` ORDER BY 
+    CASE WHEN status IN ('PROCESSING', 'CONVERTING', 'SUBMITTING') THEN 0 ELSE 1 END,
+    submitted_at DESC 
+    LIMIT ? OFFSET ?`
   params.push(limit, offset)
 
   const rows = await allAsync(sql, params)
