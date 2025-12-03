@@ -7,6 +7,7 @@ import Login from './components/Login'
 import ProtectedRoute from './components/ProtectedRoute'
 import QCDashboard from './components/qc/QCDashboard'
 import QCFileList from './components/qc/QCFileList'
+import QCSettings from './components/qc/QCSettings'
 import NumberingChecker from './components/NumberingChecker'
 
 
@@ -39,6 +40,10 @@ export const router = createHashRouter([
       {
         path: '/qc/files',
         element: <QCFileList />
+      },
+      {
+        path: '/qc/settings',
+        element: <QCSettings />
       },
       {
         path: '/numbering-checker',

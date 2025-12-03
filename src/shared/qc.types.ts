@@ -38,12 +38,8 @@ export interface QCRecord {
 
 export interface QCConfig {
   watchFolders: string[]
-  databasePath: string
   apiUrl: string
   apiKey: string
-  pollingInterval: number
-  autoSubmit: boolean
-  maxRetries: number
 }
 
 export interface QCStats {

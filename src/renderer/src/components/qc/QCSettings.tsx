@@ -2,10 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { Label } from '../ui/label'
 import { Badge } from '../ui/badge'
-import { X, Plus, Play, Square, CheckCircle, XCircle } from 'lucide-react'
+import { X, Plus, Play, Square } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCConfig } from '../../types/qc.types'
 
@@ -17,12 +15,6 @@ export default function QCSettings(): React.JSX.Element {
     watchedFolders: string[]
   } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<{
-    success: boolean
-    message: string
-  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const navItems = [
@@ -57,39 +49,6 @@ export default function QCSettings(): React.JSX.Element {
     }
   }
 
-  const handleSaveConfig = async (): Promise<void> => {
-    if (!config) return
-
-    try {
-      setSaving(true)
-      await qcService.updateConfig(config)
-      await loadWatcherStatus()
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save configuration')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleTestConnection = async (): Promise<void> => {
-    try {
-      setTesting(true)
-      const result = await qcService.testConnection()
-      setConnectionStatus({
-        success: result.success,
-        message: result.data?.message || (result.success ? 'Connected' : 'Failed')
-      })
-    } catch (err) {
-      setConnectionStatus({
-        success: false,
-        message: err instanceof Error ? err.message : 'Connection test failed'
-      })
-    } finally {
-      setTesting(false)
-    }
-  }
-
   const handleAddFolder = async (): Promise<void> => {
     const result = await window.api.dialog.showOpenDialog({
       properties: ['openDirectory']
@@ -98,6 +57,10 @@ export default function QCSettings(): React.JSX.Element {
     if (!result.canceled && result.filePaths.length > 0) {
       const folder = result.filePaths[0]
       try {
+        // If folder already exists, remove it first
+        if (config && config.watchFolders.length > 0) {
+          await qcService.removeWatchFolder(config.watchFolders[0])
+        }
         await qcService.addWatchFolder(folder)
         await loadConfig()
         await loadWatcherStatus()
@@ -172,26 +135,46 @@ export default function QCSettings(): React.JSX.Element {
       {/* Watch Folders */}
       <Card>
         <CardHeader>
-          <CardTitle>Watch Folders</CardTitle>
-          <CardDescription>Folders to monitor for new DOCX files</CardDescription>
+          <CardTitle>Watch Folder</CardTitle>
+          <CardDescription>
+            Folder to monitor for new DOCX files. The database will be automatically created in{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">[folder]/.qc/qc.db</code>
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {config.watchFolders.map((folder) => (
-              <div key={folder} className="flex items-center justify-between p-3 border rounded-md">
-                <span className="text-sm font-mono truncate flex-1">{folder}</span>
-                <Button variant="ghost" size="sm" onClick={() => handleRemoveFolder(folder)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          {config.watchFolders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No watch folder configured.</p>
+              <p className="text-sm mt-1">Add a folder to start monitoring for files.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {config.watchFolders.map((folder) => (
+                <div
+                  key={folder}
+                  className="flex items-center justify-between p-3 border rounded-md"
+                >
+                  <span className="text-sm font-mono truncate flex-1">{folder}</span>
+                  <Button variant="ghost" size="sm" onClick={() => handleRemoveFolder(folder)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2">
-            <Button onClick={handleAddFolder}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Folder
-            </Button>
-            {watcherStatus && (
+            {config.watchFolders.length === 0 ? (
+              <Button onClick={handleAddFolder}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Folder
+              </Button>
+            ) : (
+              <Button onClick={handleAddFolder} variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Change Folder
+              </Button>
+            )}
+            {watcherStatus && config.watchFolders.length > 0 && (
               <Button
                 onClick={handleToggleWatcher}
                 variant={watcherStatus.isActive ? 'destructive' : 'default'}
@@ -219,140 +202,15 @@ export default function QCSettings(): React.JSX.Element {
               >
                 {watcherStatus.isActive ? 'Active' : 'Inactive'}
               </Badge>
+              {watcherStatus.watchedFolders.length > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  (1 folder)
+                </span>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* External API Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>External QC API</CardTitle>
-          <CardDescription>Configuration for the external quality check service</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="apiUrl">API URL</Label>
-            <Input
-              id="apiUrl"
-              value={config.apiUrl}
-              onChange={(e) => setConfig({ ...config, apiUrl: e.target.value })}
-              placeholder="https://api.example.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key</Label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={config.apiKey}
-              onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-              placeholder="Enter API key"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={handleTestConnection} disabled={testing}>
-              {testing ? 'Testing...' : 'Test Connection'}
-            </Button>
-            {connectionStatus && (
-              <div className="flex items-center gap-2">
-                {connectionStatus.success ? (
-                  <>
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span className="text-sm text-green-600">
-                      {connectionStatus.message || 'Connected'}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-5 w-5 text-red-500" />
-                    <span className="text-sm text-red-600">
-                      {connectionStatus.message || 'Failed'}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Advanced Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Advanced Settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="databasePath">Database Location</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="databasePath"
-                value={config.databasePath}
-                readOnly
-                className="flex-1 font-mono text-sm"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const result = await window.api.dialog.showOpenDialog({
-                    properties: ['openDirectory']
-                  })
-                  if (!result.canceled && result.filePaths.length > 0) {
-                    const folder = result.filePaths[0]
-                    setConfig({ ...config, databasePath: `${folder}\\.qc\\qc.db` })
-                  }
-                }}
-              >
-                Browse
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              For network folders, set this to a shared location so all users can coordinate.
-              Default: Watch Folder\.qc\qc.db
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="pollingInterval">Polling Interval (ms)</Label>
-              <Input
-                id="pollingInterval"
-                type="number"
-                value={config.pollingInterval}
-                onChange={(e) =>
-                  setConfig({ ...config, pollingInterval: parseInt(e.target.value) || 5000 })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="maxRetries">Max Retries</Label>
-              <Input
-                id="maxRetries"
-                type="number"
-                value={config.maxRetries}
-                onChange={(e) => setConfig({ ...config, maxRetries: parseInt(e.target.value) || 3 })}
-              />
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="autoSubmit"
-              checked={config.autoSubmit}
-              onChange={(e) => setConfig({ ...config, autoSubmit: e.target.checked })}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="autoSubmit">Auto-submit files for QC</Label>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end">
-        <Button onClick={handleSaveConfig} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Configuration'}
-        </Button>
-      </div>
     </div>
   )
 }

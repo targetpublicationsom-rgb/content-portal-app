@@ -89,23 +89,18 @@ class QCOrchestrator extends EventEmitter {
       // Setup event listeners
       this.setupWatcherEvents()
 
-      // Configure external service if API settings exist
+      // Configure external service from config
       const config = getConfig()
       if (config.apiUrl && config.apiKey) {
         configureQCExternalService(config.apiUrl, config.apiKey)
+        console.log('[QCOrchestrator] External QC service configured')
       }
 
       // Start polling for processing records
       this.startStatusPolling()
 
-      // Auto-start watcher if watch folders are configured
-      if (config.watchFolders && config.watchFolders.length > 0) {
-        this.ensureFormatFoldersExist(config.watchFolders)
-        startQCWatcher(config.watchFolders)
-        console.log('[QCOrchestrator] Watcher auto-started with configured folders')
-      } else {
-        console.log('[QCOrchestrator] No watch folders configured - watcher will start manually')
-      }
+      // Note: Watcher will be started manually via qc:start-watcher IPC call
+      console.log('[QCOrchestrator] Initialized - watcher will start when user clicks Start Watching')
 
       this.isInitialized = true
       console.log('[QCOrchestrator] Initialized successfully')
@@ -656,13 +651,13 @@ class QCOrchestrator extends EventEmitter {
   }
 
   private startStatusPolling(): void {
-    const config = getConfig()
+    const POLLING_INTERVAL = 5000 // 5 seconds
 
     this.pollingInterval = setInterval(async () => {
       await this.pollProcessingRecords()
-    }, config.pollingInterval)
+    }, POLLING_INTERVAL)
 
-    console.log(`[QCOrchestrator] Status polling started (interval: ${config.pollingInterval}ms)`)
+    console.log(`[QCOrchestrator] Status polling started (interval: ${POLLING_INTERVAL}ms)`)
   }
 
   private async pollProcessingRecords(): Promise<void> {

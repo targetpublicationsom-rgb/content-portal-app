@@ -5,32 +5,79 @@ import type { QCConfig } from '../../shared/qc.types'
 
 let currentConfig: QCConfig | null = null
 
+// Config file path in userData directory
+const CONFIG_FILE_PATH = path.join(app.getPath('userData'), 'qc-config.json')
+
+// Load config from JSON file
+function loadConfigFromFile(): QCConfig | null {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const fileContent = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8')
+      const config = JSON.parse(fileContent) as QCConfig
+      console.log('[QCConfig] Loaded configuration from file:', CONFIG_FILE_PATH)
+      return config
+    }
+  } catch (error) {
+    console.error('[QCConfig] Failed to load config file:', error)
+  }
+  return null
+}
+
+// Save config to JSON file
+export function saveConfig(config: QCConfig): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath('userData')
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true })
+    }
+
+    // Write config to file
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 2), 'utf-8')
+    console.log('[QCConfig] Configuration saved to file:', CONFIG_FILE_PATH)
+
+    // Update in-memory config
+    currentConfig = config
+  } catch (error) {
+    console.error('[QCConfig] Failed to save config file:', error)
+    throw new Error(`Failed to save configuration: ${error}`)
+  }
+}
+
 // Load environment variables
 function loadEnvConfig(): QCConfig {
   const watchFolder = process.env.VITE_QC_WATCH_FOLDER || ''
 
   return {
     watchFolders: watchFolder ? [watchFolder] : [],
-    databasePath: watchFolder
-      ? path.join(watchFolder, '.qc', 'qc.db')
-      : path.join(app.getPath('userData'), 'qc', 'qc.db'),
     apiUrl: process.env.VITE_QC_API_URL || '',
-    apiKey: process.env.VITE_QC_API_KEY || '',
-    pollingInterval: parseInt(process.env.VITE_QC_POLLING_INTERVAL || '5000'),
-    autoSubmit: process.env.VITE_QC_AUTO_SUBMIT !== 'false',
-    maxRetries: parseInt(process.env.VITE_QC_MAX_RETRIES || '3')
+    apiKey: process.env.VITE_QC_API_KEY || ''
   }
 }
 
-// Initialize config from .env
+// Initialize config from file or .env
 export function initializeQCConfig(): void {
-  currentConfig = loadEnvConfig()
+  // Try to load from file first
+  const fileConfig = loadConfigFromFile()
+  const envConfig = loadEnvConfig()
 
-  console.log('[QCConfig] Loaded configuration from .env')
-  console.log('[QCConfig] Watch folder:', currentConfig.watchFolders[0] || 'Not set')
-  console.log('[QCConfig] Database path:', currentConfig.databasePath)
-  console.log('[QCConfig] API URL:', currentConfig.apiUrl || 'Not set')
-  console.log('[QCConfig] Auto-submit:', currentConfig.autoSubmit)
+  if (fileConfig) {
+    // Merge file config with env defaults (env takes precedence for API settings)
+    currentConfig = {
+      watchFolders: fileConfig.watchFolders,
+      apiUrl: fileConfig.apiUrl || envConfig.apiUrl,
+      apiKey: fileConfig.apiKey || envConfig.apiKey
+    }
+    console.log('[QCConfig] Using configuration from file (with env fallback for API)')
+  } else {
+    // Fallback to environment variables
+    currentConfig = envConfig
+    console.log('[QCConfig] Using configuration from environment variables')
+  }
+
+  console.log('[QCConfig] Watch folders:', currentConfig.watchFolders.join(', ') || 'None')
+  console.log('[QCConfig] API URL:', currentConfig.apiUrl || 'Not configured')
+  console.log('[QCConfig] API Key:', currentConfig.apiKey ? '***' + currentConfig.apiKey.slice(-4) : 'Not configured')
 }
 
 // Get current configuration
@@ -41,10 +88,17 @@ export function getConfig(): QCConfig {
   return currentConfig!
 }
 
-// Get database path (always uses watch folder/.qc/qc.db if watch folder is set)
+// Get database path (always uses first watch folder/.qc/qc.db)
 export function getDatabasePath(): string {
   const config = getConfig()
-  return config.databasePath
+  
+  // Use first watch folder if configured
+  if (config.watchFolders && config.watchFolders.length > 0) {
+    return path.join(config.watchFolders[0], '.qc', 'qc.db')
+  }
+  
+  // Fallback to userData directory
+  return path.join(app.getPath('userData'), 'qc', 'qc.db')
 }
 
 // Get lock base path (directory where .qc folder with locks will be created)

@@ -1,6 +1,5 @@
 import chokidar, { FSWatcher } from 'chokidar'
 import * as path from 'path'
-import * as fs from 'fs'
 import { EventEmitter } from 'events'
 
 export interface WatchEvent {

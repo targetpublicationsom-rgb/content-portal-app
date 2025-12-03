@@ -48,7 +48,8 @@ export default function QCFileList(): React.JSX.Element {
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
-    { path: '/qc/files', label: 'Files' }
+    { path: '/qc/files', label: 'Files' },
+    { path: '/qc/settings', label: 'Settings' }
   ]
 
   // Render markdown as HTML
