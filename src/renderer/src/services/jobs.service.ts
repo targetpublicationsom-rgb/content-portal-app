@@ -78,8 +78,15 @@ export const uploadFilesToServer = async (jobId: string): Promise<{ message: str
   try {
     const serverInfo = await window.api.getServerInfo()
     if (serverInfo?.port) {
+      const token = await window.api.getAuthToken()
+      const headers: HeadersInit = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch(`http://127.0.0.1:${serverInfo.port}/jobs/${jobId}/upload`, {
-        method: 'POST'
+        method: 'POST',
+        headers
       })
 
       if (!response.ok) {
