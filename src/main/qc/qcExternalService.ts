@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios'
 import * as fs from 'fs'
 import FormData from 'form-data'
+import type { BatchSubmitResponse, BatchStatusResponse, BatchManifest } from '../../shared/qc.types'
 
 export interface QCSubmitResponse {
   success: boolean
@@ -100,6 +101,66 @@ class QCExternalService {
       return response.data
     } catch (error) {
       this.handleError('Failed to get QC status', error)
+      throw error
+    }
+  }
+
+  async submitBatchForQC(
+    zipPath: string,
+    batchId: string,
+    manifest: BatchManifest
+  ): Promise<BatchSubmitResponse> {
+    if (!this.client) {
+      throw new Error('Service not configured. Call configure() first.')
+    }
+
+    if (!fs.existsSync(zipPath)) {
+      throw new Error(`ZIP file not found: ${zipPath}`)
+    }
+
+    console.log(`[QCExternalService] Submitting batch ${batchId} with ${manifest.file_count} files...`)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', fs.createReadStream(zipPath))
+      formData.append('batch_id', batchId)
+
+      const response = await this.client.post<BatchSubmitResponse>(
+        '/qc/batch-process',
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            Authorization: `Bearer ${this.apiKey}`
+          },
+          timeout: 300000 // 5 minutes for batch uploads
+        }
+      )
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to submit batch')
+      }
+
+      console.log(
+        `[QCExternalService] Batch submitted successfully. Batch ID: ${response.data.batch_id}, Jobs: ${response.data.jobs.length}`
+      )
+      return response.data
+    } catch (error) {
+      this.handleError('Failed to submit batch for QC', error)
+      throw error
+    }
+  }
+
+  async getQCBatchStatus(batchId: string): Promise<BatchStatusResponse> {
+    if (!this.client) {
+      throw new Error('Service not configured. Call configure() first.')
+    }
+
+    try {
+      const response = await this.client.get<BatchStatusResponse>(`/qc/batches/${batchId}`)
+      return response.data
+    } catch (error) {
+      this.handleError('Failed to get batch status', error)
       throw error
     }
   }

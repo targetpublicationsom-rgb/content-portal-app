@@ -44,6 +44,14 @@ export function saveConfig(config: QCConfig): void {
   }
 }
 
+// Default batch configuration
+const DEFAULT_BATCH_CONFIG = {
+  batchSize: 10,
+  batchTimeoutSeconds: 30,
+  minBatchSize: 3,
+  maxBatchSizeMB: 150
+}
+
 // Load environment variables
 function loadEnvConfig(): QCConfig {
   const watchFolder = process.env.VITE_QC_WATCH_FOLDER || ''
@@ -51,7 +59,8 @@ function loadEnvConfig(): QCConfig {
   return {
     watchFolders: watchFolder ? [watchFolder] : [],
     apiUrl: process.env.VITE_QC_API_URL || '',
-    apiKey: process.env.VITE_QC_API_KEY || ''
+    apiKey: process.env.VITE_QC_API_KEY || '',
+    ...DEFAULT_BATCH_CONFIG
   }
 }
 
@@ -66,7 +75,12 @@ export function initializeQCConfig(): void {
     currentConfig = {
       watchFolders: fileConfig.watchFolders,
       apiUrl: fileConfig.apiUrl || envConfig.apiUrl,
-      apiKey: fileConfig.apiKey || envConfig.apiKey
+      apiKey: fileConfig.apiKey || envConfig.apiKey,
+      // Batch settings with defaults
+      batchSize: fileConfig.batchSize ?? DEFAULT_BATCH_CONFIG.batchSize,
+      batchTimeoutSeconds: fileConfig.batchTimeoutSeconds ?? DEFAULT_BATCH_CONFIG.batchTimeoutSeconds,
+      minBatchSize: fileConfig.minBatchSize ?? DEFAULT_BATCH_CONFIG.minBatchSize,
+      maxBatchSizeMB: fileConfig.maxBatchSizeMB ?? DEFAULT_BATCH_CONFIG.maxBatchSizeMB
     }
     console.log('[QCConfig] Using configuration from file (with env fallback for API)')
   } else {
@@ -140,4 +154,16 @@ export function getQCOutputPaths(
     reportMdPath: path.join(qcFolder, `qc_report.md`),
     reportDocxPath: path.join(qcFolder, `qc_report.docx`)
   }
+}
+
+// Get batch ZIP storage path
+export function getBatchZipPath(batchId: string): string {
+  const lockBasePath = getLockBasePath()
+  const batchFolder = path.join(lockBasePath, '.qc', 'batches')
+
+  if (!fs.existsSync(batchFolder)) {
+    fs.mkdirSync(batchFolder, { recursive: true })
+  }
+
+  return path.join(batchFolder, `${batchId}.zip`)
 }

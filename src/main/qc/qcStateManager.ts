@@ -117,13 +117,53 @@ export async function initializeQCDatabase(): Promise<void> {
             folder_path TEXT,
             chapter_name TEXT,
             file_type TEXT,
-            source_files TEXT
+            source_files TEXT,
+            batch_id TEXT,
+            original_batch_id TEXT,
+            batch_submission_order INTEGER
           )
         `
 
         await execAsync(createTableSQL)
 
-        // Create indexes
+        // Create qc_batches table
+        const createBatchesTableSQL = `
+          CREATE TABLE IF NOT EXISTS qc_batches (
+            batch_id TEXT PRIMARY KEY,
+            zip_path TEXT NOT NULL,
+            file_count INTEGER NOT NULL,
+            zip_size_bytes INTEGER,
+            created_at TEXT NOT NULL,
+            submitted_at TEXT,
+            completed_at TEXT,
+            status TEXT NOT NULL,
+            completed_count INTEGER DEFAULT 0,
+            failed_count INTEGER DEFAULT 0,
+            processing_count INTEGER DEFAULT 0
+          )
+        `
+
+        await execAsync(createBatchesTableSQL)
+
+        // Create qc_batch_history table
+        const createBatchHistoryTableSQL = `
+          CREATE TABLE IF NOT EXISTS qc_batch_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            qc_id TEXT NOT NULL,
+            batch_id TEXT NOT NULL,
+            external_qc_id TEXT,
+            attempt_number INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            submitted_at TEXT NOT NULL,
+            completed_at TEXT,
+            error_message TEXT,
+            FOREIGN KEY (qc_id) REFERENCES qc_records(qc_id)
+          )
+        `
+
+        await execAsync(createBatchHistoryTableSQL)
+
+        // Create indexes for qc_records
         await execAsync('CREATE INDEX IF NOT EXISTS idx_status ON qc_records(status)')
         await execAsync('CREATE INDEX IF NOT EXISTS idx_submitted_at ON qc_records(submitted_at)')
         await execAsync(
@@ -134,6 +174,16 @@ export async function initializeQCDatabase(): Promise<void> {
         await execAsync(
           'CREATE INDEX IF NOT EXISTS idx_folder_chapter ON qc_records(folder_path, chapter_name, file_type)'
         )
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_batch_id ON qc_records(batch_id)')
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_original_batch_id ON qc_records(original_batch_id)')
+
+        // Create indexes for qc_batches
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_batch_status ON qc_batches(status)')
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_batch_submitted_at ON qc_batches(submitted_at)')
+
+        // Create indexes for qc_batch_history
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_history_qc_id ON qc_batch_history(qc_id)')
+        await execAsync('CREATE INDEX IF NOT EXISTS idx_history_batch_id ON qc_batch_history(batch_id)')
 
         console.log('[QCStateManager] Database initialized')
         resolve()
@@ -180,7 +230,10 @@ export async function createQCRecord(
     folder_path: folderPath || null,
     chapter_name: chapterName || null,
     file_type: fileType || 'single-file',
-    source_files: sourceFiles ? JSON.stringify(sourceFiles) : null
+    source_files: sourceFiles ? JSON.stringify(sourceFiles) : null,
+    batch_id: null,
+    original_batch_id: null,
+    batch_submission_order: null
   }
 
   await runAsync(
@@ -190,8 +243,9 @@ export async function createQCRecord(
       completed_at, report_md_path, report_docx_path, qc_score, issues_found,
       issues_low, issues_medium, issues_high,
       external_qc_id, error_message, retry_count, processed_by,
-      folder_path, chapter_name, file_type, source_files
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      folder_path, chapter_name, file_type, source_files,
+      batch_id, original_batch_id, batch_submission_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     [
       record.qc_id,
@@ -215,7 +269,10 @@ export async function createQCRecord(
       record.folder_path,
       record.chapter_name,
       record.file_type,
-      record.source_files
+      record.source_files,
+      record.batch_id,
+      record.original_batch_id,
+      record.batch_submission_order
     ]
   )
 
@@ -519,4 +576,249 @@ export async function reinitializeQCDatabase(): Promise<void> {
   console.log('[QCStateManager] Reinitializing database...')
   await closeQCDatabase()
   await initializeQCDatabase()
+}
+
+// ===== BATCH MANAGEMENT FUNCTIONS =====
+
+import type { QCBatch, BatchStatus } from '../../shared/qc.types'
+
+// Create a new batch record
+export async function createBatchRecord(
+  batchId: string,
+  zipPath: string,
+  fileCount: number,
+  zipSizeBytes?: number
+): Promise<QCBatch> {
+  if (!db) throw new Error('Database not initialized')
+
+  const batch: QCBatch = {
+    batch_id: batchId,
+    zip_path: zipPath,
+    file_count: fileCount,
+    zip_size_bytes: zipSizeBytes || null,
+    created_at: new Date().toISOString(),
+    submitted_at: null,
+    completed_at: null,
+    status: 'PENDING',
+    completed_count: 0,
+    failed_count: 0,
+    processing_count: 0
+  }
+
+  await runAsync(
+    `INSERT INTO qc_batches (
+      batch_id, zip_path, file_count, zip_size_bytes, created_at, submitted_at,
+      completed_at, status, completed_count, failed_count, processing_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      batch.batch_id,
+      batch.zip_path,
+      batch.file_count,
+      batch.zip_size_bytes,
+      batch.created_at,
+      batch.submitted_at,
+      batch.completed_at,
+      batch.status,
+      batch.completed_count,
+      batch.failed_count,
+      batch.processing_count
+    ]
+  )
+
+  console.log(`[QCStateManager] Created batch record: ${batchId} with ${fileCount} files`)
+  return batch
+}
+
+// Update batch status
+export async function updateBatchStatus(
+  batchId: string,
+  status: BatchStatus,
+  completedCount?: number,
+  failedCount?: number,
+  processingCount?: number
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized')
+
+  const updates: string[] = ['status = ?']
+  const values: unknown[] = [status]
+
+  if (completedCount !== undefined) {
+    updates.push('completed_count = ?')
+    values.push(completedCount)
+  }
+
+  if (failedCount !== undefined) {
+    updates.push('failed_count = ?')
+    values.push(failedCount)
+  }
+
+  if (processingCount !== undefined) {
+    updates.push('processing_count = ?')
+    values.push(processingCount)
+  }
+
+  if (status === 'SUBMITTED' && updates.indexOf('submitted_at') === -1) {
+    updates.push('submitted_at = ?')
+    values.push(new Date().toISOString())
+  }
+
+  if ((status === 'COMPLETED' || status === 'PARTIAL_COMPLETE' || status === 'FAILED') && updates.indexOf('completed_at') === -1) {
+    updates.push('completed_at = ?')
+    values.push(new Date().toISOString())
+  }
+
+  values.push(batchId)
+
+  await runAsync(
+    `UPDATE qc_batches SET ${updates.join(', ')} WHERE batch_id = ?`,
+    values
+  )
+
+  console.log(`[QCStateManager] Updated batch ${batchId} status to ${status}`)
+}
+
+// Update multiple QC records with batch information
+export async function updateBatchRecords(
+  batchId: string,
+  jobMappings: Array<{ qcId: string; jobId: string; order: number }>
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized')
+
+  for (const mapping of jobMappings) {
+    await runAsync(
+      `UPDATE qc_records SET 
+        batch_id = ?,
+        external_qc_id = ?,
+        batch_submission_order = ?,
+        original_batch_id = COALESCE(original_batch_id, ?)
+       WHERE qc_id = ?`,
+      [batchId, mapping.jobId, mapping.order, batchId, mapping.qcId]
+    )
+  }
+
+  console.log(`[QCStateManager] Updated ${jobMappings.length} records with batch ${batchId}`)
+}
+
+// Get all records in a batch
+export async function getRecordsByBatchId(batchId: string): Promise<QCRecord[]> {
+  if (!db) throw new Error('Database not initialized')
+
+  const records = await allAsync(
+    'SELECT * FROM qc_records WHERE batch_id = ? ORDER BY batch_submission_order',
+    [batchId]
+  )
+
+  return records as QCRecord[]
+}
+
+// Get QC record by external job ID
+export async function getQCRecordByExternalId(externalQcId: string): Promise<QCRecord | null> {
+  if (!db) throw new Error('Database not initialized')
+
+  const record = await getAsync(
+    'SELECT * FROM qc_records WHERE external_qc_id = ?',
+    [externalQcId]
+  )
+
+  return (record as QCRecord) || null
+}
+
+// Record batch attempt in history
+export async function recordBatchHistory(
+  qcId: string,
+  batchId: string,
+  externalQcId: string | null,
+  attemptNumber: number,
+  status: QCStatus
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized')
+
+  await runAsync(
+    `INSERT INTO qc_batch_history (
+      qc_id, batch_id, external_qc_id, attempt_number, status, submitted_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [qcId, batchId, externalQcId, attemptNumber, status, new Date().toISOString()]
+  )
+
+  console.log(`[QCStateManager] Recorded batch history for ${qcId} in batch ${batchId}`)
+}
+
+// Update batch history completion
+export async function updateBatchHistory(
+  qcId: string,
+  batchId: string,
+  status: QCStatus,
+  errorMessage?: string
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized')
+
+  await runAsync(
+    `UPDATE qc_batch_history SET 
+      status = ?,
+      completed_at = ?,
+      error_message = ?
+     WHERE qc_id = ? AND batch_id = ?`,
+    [status, new Date().toISOString(), errorMessage || null, qcId, batchId]
+  )
+}
+
+// Get batch statistics
+export async function getBatchStats(batchId: string): Promise<{
+  total: number
+  completed: number
+  failed: number
+  processing: number
+  queued: number
+}> {
+  if (!db) throw new Error('Database not initialized')
+
+  const stats = await getAsync(
+    `SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+      SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
+      SUM(CASE WHEN status IN ('PROCESSING', 'SUBMITTING', 'DOWNLOADING') THEN 1 ELSE 0 END) as processing,
+      SUM(CASE WHEN status IN ('QUEUED', 'CONVERTING') THEN 1 ELSE 0 END) as queued
+     FROM qc_records 
+     WHERE batch_id = ?`,
+    [batchId]
+  )
+
+  return (stats as any) || { total: 0, completed: 0, failed: 0, processing: 0, queued: 0 }
+}
+
+// Get all batches with status
+export async function getQCBatches(statusFilter?: BatchStatus[]): Promise<QCBatch[]> {
+  if (!db) throw new Error('Database not initialized')
+
+  let query = 'SELECT * FROM qc_batches'
+  const params: unknown[] = []
+
+  if (statusFilter && statusFilter.length > 0) {
+    const placeholders = statusFilter.map(() => '?').join(',')
+    query += ` WHERE status IN (${placeholders})`
+    params.push(...statusFilter)
+  }
+
+  query += ' ORDER BY created_at DESC'
+
+  const batches = await allAsync(query, params)
+  return batches as QCBatch[]
+}
+
+// Get batch by ID
+export async function getQCBatch(batchId: string): Promise<QCBatch | null> {
+  if (!db) throw new Error('Database not initialized')
+
+  const batch = await getAsync(
+    'SELECT * FROM qc_batches WHERE batch_id = ?',
+    [batchId]
+  )
+
+  return (batch as QCBatch) || null
+}
+
+// Get processing batches (batches that need polling)
+export async function getProcessingBatches(): Promise<QCBatch[]> {
+  return getQCBatches(['SUBMITTED', 'PROCESSING'])
 }

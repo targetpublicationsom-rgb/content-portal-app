@@ -36,7 +36,18 @@ import {
 } from './qcNotifications'
 import { acquireLock, releaseLock, checkLock, cleanStaleLocks } from './qcLockManager'
 import type { WatchEvent } from './qcWatcher'
-import type { QCRecord } from '../../shared/qc.types'
+import type { QCRecord, BatchManifest } from '../../shared/qc.types'
+import AdmZip from 'adm-zip'
+import { v4 as uuidv4 } from 'uuid'
+import {
+  createBatchRecord,
+  updateBatchStatus,
+  updateBatchRecords,
+  getProcessingBatches,
+  getQCRecordByExternalId,
+  recordBatchHistory
+} from './qcStateManager'
+import { getBatchZipPath } from './qcConfig'
 
 class QCOrchestrator extends EventEmitter {
   private isInitialized = false
@@ -54,6 +65,18 @@ class QCOrchestrator extends EventEmitter {
   private isProcessingQueue = false
   private workerPool: WorkerPool | null = null
   private processingFiles: Set<string> = new Set() // Track files currently being processed
+  
+  // Batch processing properties
+  private convertedPdfBatch: Array<{
+    qcId: string
+    pdfPath: string
+    filename: string
+    originalName: string
+    folderPath: string | null
+    fileType: string | null
+  }> = []
+  private batchTimeoutTimer: NodeJS.Timeout | null = null
+  private isBatchProcessing = false
 
   async initialize(mainWindow: BrowserWindow): Promise<void> {
     if (this.isInitialized) {
@@ -582,15 +605,20 @@ class QCOrchestrator extends EventEmitter {
       const pdfPath = await this.convertToPdf(filePath, paths.pdfPath)
       await updateQCPdfPath(record.qc_id, pdfPath)
 
-      // Step 2: Submit to external API
-      await this.submitToExternalAPI(record.qc_id, pdfPath, filename)
+      // Step 2: Add to batch for batch submission (instead of immediate individual submission)
+      await this.addToBatch(
+        record.qc_id,
+        pdfPath,
+        filename,
+        record.original_name,
+        record.folder_path,
+        record.file_type
+      )
 
-      // Step 3: Wait for job to complete (polling reaches terminal state)
-      // This keeps the job slot occupied until COMPLETED or FAILED
-      await this.waitForJobCompletion(record.qc_id, filename)
-
-      // Release lock after successful processing
+      // Release lock - batch submission will handle the rest
       await releaseLock(lockBasePath, filePath)
+
+      console.log(`[QCOrchestrator] File ${filename} converted and added to batch`)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QCOrchestrator] Failed to process file ${filename}:`, error)
@@ -650,6 +678,242 @@ class QCOrchestrator extends EventEmitter {
     })
   }
 
+  // ===== BATCH PROCESSING METHODS =====
+
+  private async addToBatch(
+    qcId: string,
+    pdfPath: string,
+    filename: string,
+    originalName: string,
+    folderPath: string | null,
+    fileType: string | null
+  ): Promise<void> {
+    console.log(`[QCOrchestrator] Adding ${filename} to batch (current size: ${this.convertedPdfBatch.length})`)
+
+    this.convertedPdfBatch.push({
+      qcId,
+      pdfPath,
+      filename,
+      originalName,
+      folderPath,
+      fileType
+    })
+
+    // Start batch timeout timer on first file
+    if (this.convertedPdfBatch.length === 1) {
+      this.startBatchTimeout()
+    }
+
+    // Check if we should submit the batch now
+    await this.checkBatchSubmission()
+  }
+
+  private startBatchTimeout(): void {
+    const config = getConfig()
+    const timeoutMs = (config.batchTimeoutSeconds || 30) * 1000
+
+    // Clear existing timer
+    if (this.batchTimeoutTimer) {
+      clearTimeout(this.batchTimeoutTimer)
+    }
+
+    this.batchTimeoutTimer = setTimeout(async () => {
+      console.log(`[QCOrchestrator] Batch timeout reached (${timeoutMs}ms), submitting batch...`)
+      await this.submitBatchIfReady('timeout')
+    }, timeoutMs)
+  }
+
+  private async checkBatchSubmission(): Promise<void> {
+    const config = getConfig()
+    const batchSize = config.batchSize || 10
+    const queueIsEmpty = this.jobQueue.length === 0 && this.activeJobs === 0
+
+    // Submit if batch size reached
+    if (this.convertedPdfBatch.length >= batchSize) {
+      console.log(`[QCOrchestrator] Batch size reached (${this.convertedPdfBatch.length}/${batchSize})`)
+      await this.submitBatchIfReady('size')
+    }
+    // Submit if queue is empty and we have minimum batch size
+    else if (queueIsEmpty && this.convertedPdfBatch.length >= (config.minBatchSize || 3)) {
+      console.log(`[QCOrchestrator] Queue empty, submitting batch (${this.convertedPdfBatch.length} files)`)
+      await this.submitBatchIfReady('queue-empty')
+    }
+  }
+
+  private async submitBatchIfReady(trigger: 'size' | 'timeout' | 'queue-empty'): Promise<void> {
+    if (this.isBatchProcessing || this.convertedPdfBatch.length === 0) {
+      return
+    }
+
+    this.isBatchProcessing = true
+    const batchFiles = [...this.convertedPdfBatch]
+
+    try {
+      // Clear timeout timer
+      if (this.batchTimeoutTimer) {
+        clearTimeout(this.batchTimeoutTimer)
+        this.batchTimeoutTimer = null
+      }
+
+      this.convertedPdfBatch = [] // Clear batch
+
+      console.log(`[QCOrchestrator] Submitting batch (trigger: ${trigger}, files: ${batchFiles.length})`)
+      await this.submitBatch(batchFiles)
+    } catch (error) {
+      console.error('[QCOrchestrator] Error submitting batch:', error)
+      // Re-add files to batch on error
+      this.convertedPdfBatch.unshift(...batchFiles)
+    } finally {
+      this.isBatchProcessing = false
+    }
+  }
+
+  private async submitBatch(
+    batchFiles: Array<{
+      qcId: string
+      pdfPath: string
+      filename: string
+      originalName: string
+      folderPath: string | null
+      fileType: string | null
+    }>
+  ): Promise<void> {
+    const batchId = uuidv4()
+    const zipPath = getBatchZipPath(batchId)
+
+    try {
+      // Create ZIP file
+      console.log(`[QCOrchestrator] Creating ZIP for batch ${batchId}...`)
+      await this.createBatchZip(batchId, batchFiles, zipPath)
+
+      // Get ZIP file size
+      const stats = await fs.stat(zipPath)
+      const zipSizeBytes = stats.size
+      const zipSizeMB = (zipSizeBytes / (1024 * 1024)).toFixed(2)
+      console.log(`[QCOrchestrator] ZIP created: ${zipSizeMB}MB`)
+
+      // Create batch record
+      await createBatchRecord(batchId, zipPath, batchFiles.length, zipSizeBytes)
+
+      // Create manifest
+      const manifest: BatchManifest = {
+        batch_id: batchId,
+        submitted_at: new Date().toISOString(),
+        file_count: batchFiles.length,
+        files: {}
+      }
+
+      batchFiles.forEach((file) => {
+        manifest.files[`${file.qcId}.pdf`] = {
+          original_name: file.originalName,
+          folder: file.folderPath,
+          file_type: file.fileType
+        }
+      })
+
+      // Submit to external API
+      const service = getQCExternalService()
+      const response = await service.submitBatchForQC(zipPath, batchId, manifest)
+
+      // Update batch status
+      await updateBatchStatus(batchId, 'SUBMITTED')
+
+      // Update records with batch info and job IDs
+      const jobMappings = response.jobs.map((job, index) => ({
+        qcId: job.qc_id,
+        jobId: job.job_id,
+        order: index
+      }))
+
+      await updateBatchRecords(batchId, jobMappings)
+
+      // Record history for each file
+      for (const file of batchFiles) {
+        const job = response.jobs.find((j) => j.qc_id === file.qcId)
+        if (job) {
+          const record = await getQCRecord(file.qcId)
+          await recordBatchHistory(file.qcId, batchId, job.job_id, record!.retry_count + 1, 'PROCESSING')
+        }
+      }
+
+      // Update all records to PROCESSING status
+      for (const file of batchFiles) {
+        await updateQCStatus(file.qcId, 'PROCESSING')
+        this.emitToRenderer('qc:status-update', {
+          qcId: file.qcId,
+          status: 'PROCESSING',
+          batchId: batchId
+        })
+      }
+
+      console.log(`[QCOrchestrator] Batch ${batchId} submitted successfully with ${response.jobs.length} jobs`)
+
+      // Emit batch creation event
+      this.emitToRenderer('qc:batch-created', {
+        batchId,
+        fileCount: batchFiles.length,
+        zipSize: zipSizeBytes
+      })
+    } catch (error) {
+      console.error(`[QCOrchestrator] Failed to submit batch ${batchId}:`, error)
+      
+      // Update all records to FAILED status
+      for (const file of batchFiles) {
+        await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${error}`)
+        this.emitToRenderer('qc:status-update', {
+          qcId: file.qcId,
+          status: 'FAILED'
+        })
+      }
+      
+      throw error
+    }
+  }
+
+  private async createBatchZip(
+    batchId: string,
+    batchFiles: Array<{ qcId: string; pdfPath: string; originalName: string; folderPath: string | null; fileType: string | null }>,
+    zipPath: string
+  ): Promise<void> {
+    const zip = new AdmZip()
+
+    // Create manifest
+    const manifest: BatchManifest = {
+      batch_id: batchId,
+      submitted_at: new Date().toISOString(),
+      file_count: batchFiles.length,
+      files: {}
+    }
+
+    // Add PDFs with qc_id as filename
+    for (const file of batchFiles) {
+      const pdfFilename = `${file.qcId}.pdf`
+      
+      // Add PDF to ZIP
+      zip.addLocalFile(file.pdfPath, '', pdfFilename)
+      
+      // Add to manifest
+      manifest.files[pdfFilename] = {
+        original_name: file.originalName,
+        folder: file.folderPath,
+        file_type: file.fileType
+      }
+    }
+
+    // Add manifest.json
+    zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)))
+
+    // Write ZIP file
+    await new Promise<void>((resolve, reject) => {
+      zip.writeZip(zipPath, (error) => {
+        if (error) reject(error)
+        else resolve()
+      })
+    })
+
+    console.log(`[QCOrchestrator] ZIP created: ${zipPath}`)
+  }
+
   private startStatusPolling(): void {
     const POLLING_INTERVAL = 5000 // 5 seconds
 
@@ -662,13 +926,90 @@ class QCOrchestrator extends EventEmitter {
 
   private async pollProcessingRecords(): Promise<void> {
     try {
-      const processingRecords = await getProcessingRecords()
+      // Poll batches first (more efficient)
+      await this.pollProcessingBatches()
 
-      for (const record of processingRecords) {
+      // Then poll individual records without batch_id (backward compatibility)
+      const processingRecords = await getProcessingRecords()
+      const individualRecords = processingRecords.filter(r => !r.batch_id)
+
+      for (const record of individualRecords) {
         await this.checkQCStatus(record)
       }
     } catch (error) {
       console.error('[QCOrchestrator] Error polling records:', error)
+    }
+  }
+
+  private async pollProcessingBatches(): Promise<void> {
+    try {
+      const batches = await getProcessingBatches()
+
+      for (const batch of batches) {
+        await this.checkBatchStatus(batch.batch_id)
+      }
+    } catch (error) {
+      console.error('[QCOrchestrator] Error polling batches:', error)
+    }
+  }
+
+  private async checkBatchStatus(batchId: string): Promise<void> {
+    try {
+      const service = getQCExternalService()
+      const batchStatus = await service.getQCBatchStatus(batchId)
+
+      // Update batch record
+      await updateBatchStatus(
+        batchId,
+        batchStatus.status,
+        batchStatus.completed_count,
+        batchStatus.failed_count,
+        batchStatus.processing_count
+      )
+
+      // Update individual job statuses
+      for (const job of batchStatus.jobs) {
+        const record = await getQCRecordByExternalId(job.job_id)
+        if (!record) continue
+
+        if (job.status === 'COMPLETED' && job.result) {
+          // Handle completion
+          await this.handleQCComplete(record, {
+            job_id: job.job_id,
+            status: 'COMPLETED',
+            result: job.result,
+            issues_count: job.issues_count,
+            created_at: batchStatus.submitted_at,
+            updated_at: batchStatus.updated_at
+          })
+        } else if (job.status === 'FAILED') {
+          // Handle failure
+          await updateQCStatus(record.qc_id, 'FAILED', job.error || 'QC processing failed')
+          notifyQCFailed(record.original_name, job.error || 'QC processing failed')
+          this.emitToRenderer('qc:status-update', {
+            qcId: record.qc_id,
+            status: 'FAILED',
+            error: job.error,
+            batchId: batchId
+          })
+        }
+      }
+
+      // Emit batch progress update
+      this.emitToRenderer('qc:batch-progress', {
+        batchId,
+        status: batchStatus.status,
+        completed: batchStatus.completed_count,
+        failed: batchStatus.failed_count,
+        total: batchStatus.file_count,
+        successRate: batchStatus.success_rate
+      })
+
+      console.log(
+        `[QCOrchestrator] Batch ${batchId} status: ${batchStatus.status} (${batchStatus.completed_count}/${batchStatus.file_count} completed)`
+      )
+    } catch (error) {
+      console.error(`[QCOrchestrator] Error checking batch status for ${batchId}:`, error)
     }
   }
 
