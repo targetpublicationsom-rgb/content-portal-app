@@ -484,9 +484,8 @@ export default function QCFileList(): React.JSX.Element {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
-                          {(record.status === 'FAILED' ||
-                            record.status === 'NUMBERING_FAILED' ||
-                            record.status === 'COMPLETED') && (
+                          {(record.status === 'CONVERSION_FAILED' ||
+                            record.status === 'NUMBERING_FAILED') && (
                             <Button
                               variant="ghost"
                               size="icon"
