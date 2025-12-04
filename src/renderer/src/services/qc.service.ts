@@ -145,6 +145,14 @@ export const qcService = {
     }
   },
 
+  async getBatchFiles(batchId: string): Promise<QCRecord[]> {
+    const response = (await window.api.qc.getBatchFiles(batchId)) as APIResponse<QCRecord[]>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to get batch files')
+    }
+    return response.data || []
+  },
+
   onFileDetected(callback: (data: any) => void): () => void {
     return window.api.qc.onFileDetected((_event, data) => callback(data))
   },

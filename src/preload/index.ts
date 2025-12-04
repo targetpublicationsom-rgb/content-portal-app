@@ -78,6 +78,7 @@ const api = {
     getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
     getBatches: (statusFilter?: string[]) => ipcRenderer.invoke('qc:get-batches', statusFilter),
     retryBatch: (batchId: string) => ipcRenderer.invoke('qc:retry-batch', batchId),
+    getBatchFiles: (batchId: string) => ipcRenderer.invoke('qc:get-batch-files', batchId),
     onFileDetected: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:file-detected', callback)
       return () => ipcRenderer.removeListener('qc:file-detected', callback)

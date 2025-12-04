@@ -20,10 +20,12 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  RotateCw
+  RotateCw,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
-import type { QCBatch, BatchStatus } from '../../types/qc.types'
+import type { QCBatch, BatchStatus, QCRecord } from '../../types/qc.types'
 
 const ITEMS_PER_PAGE = 10
 
@@ -40,6 +42,7 @@ export default function QCBatchList(): React.JSX.Element {
   const [currentPage, setCurrentPage] = useState(1)
   const [showRetryModal, setShowRetryModal] = useState(false)
   const [retryResult, setRetryResult] = useState<RetryResult | null>(null)
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
@@ -143,6 +146,51 @@ export default function QCBatchList(): React.JSX.Element {
     }
   }
 
+  const toggleBatchExpansion = (batchId: string): void => {
+    setExpandedBatches((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(batchId)) {
+        newSet.delete(batchId)
+      } else {
+        newSet.add(batchId)
+      }
+      return newSet
+    })
+  }
+
+  const getFileStatusBadge = (status: string): React.JSX.Element => {
+    const statusConfig: Record<string, { className: string; icon: React.ReactNode }> = {
+      QUEUED: {
+        className: 'bg-gray-500',
+        icon: <Clock className="h-3 w-3 mr-1" />
+      },
+      PROCESSING: {
+        className: 'bg-purple-500',
+        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      },
+      DOWNLOADING: {
+        className: 'bg-blue-500',
+        icon: <Package className="h-3 w-3 mr-1" />
+      },
+      COMPLETED: {
+        className: 'bg-green-500',
+        icon: <CheckCircle2 className="h-3 w-3 mr-1" />
+      },
+      FAILED: {
+        className: 'bg-red-500',
+        icon: <AlertCircle className="h-3 w-3 mr-1" />
+      }
+    }
+
+    const config = statusConfig[status] || statusConfig.QUEUED
+    return (
+      <Badge variant="default" className={`${config.className} flex items-center w-fit text-xs`}>
+        {config.icon}
+        {status}
+      </Badge>
+    )
+  }
+
   const retryBatch = async (batchId: string, failedCount: number): Promise<void> => {
     try {
       setLoading(true)
@@ -157,6 +205,16 @@ export default function QCBatchList(): React.JSX.Element {
     }
   }
 
+  const loadBatchFiles = async (batchId: string): Promise<QCRecord[]> => {
+    try {
+      const files = await qcService.getBatchFiles(batchId)
+      return files
+    } catch (err) {
+      console.error('Failed to load batch files:', err)
+      return []
+    }
+  }
+
   if (loading && batches.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -166,7 +224,7 @@ export default function QCBatchList(): React.JSX.Element {
   }
 
   return (
-    <div className="pb-[10%] pt-8 px-8 space-y-6">
+    <div className="pb-[5%] pt-8 px-8 space-y-6">
       {/* Navigation Tabs */}
       <div className="flex items-center gap-4 border-b pb-4 overflow-x-auto">
         {navItems.map((item) => (
@@ -240,51 +298,78 @@ export default function QCBatchList(): React.JSX.Element {
                   </TableHeader>
                   <TableBody>
                     {paginatedBatches.map((batch) => (
-                      <TableRow key={batch.batch_id}>
-                        <TableCell className="font-mono text-xs">
-                          {batch.batch_id.substring(0, 12)}...
-                        </TableCell>
-                        <TableCell>{batch.file_count}</TableCell>
-                        <TableCell>{getBatchStatusBadge(batch.status)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDate(batch.created_at)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDate(batch.submitted_at)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="text-green-600 font-medium">
-                              {batch.completed_count}
-                            </span>
-                            <span className="text-muted-foreground">/</span>
-                            <span className="text-red-600 font-medium">{batch.failed_count}</span>
-                            <span className="text-muted-foreground">/</span>
-                            <span className="text-blue-600 font-medium">
-                              {batch.processing_count}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {(batch.status === 'FAILED' || batch.status === 'PARTIAL_COMPLETE') &&
-                            batch.failed_count > 0 && (
+                      <>
+                        <TableRow key={batch.batch_id} className="cursor-pointer hover:bg-muted/50">
+                          <TableCell className="font-mono text-xs">
+                            <div className="flex items-center gap-2">
                               <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                onClick={() => retryBatch(batch.batch_id, batch.failed_count)}
-                                disabled={loading}
-                                className="flex items-center gap-1"
+                                className="h-6 w-6 p-0"
+                                onClick={() => toggleBatchExpansion(batch.batch_id)}
                               >
-                                {loading ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                {expandedBatches.has(batch.batch_id) ? (
+                                  <ChevronUp className="h-4 w-4" />
                                 ) : (
-                                  <RotateCw className="h-3 w-3" />
+                                  <ChevronDown className="h-4 w-4" />
                                 )}
-                                Retry Failed ({batch.failed_count})
                               </Button>
-                            )}
-                        </TableCell>
-                      </TableRow>
+                              {batch.batch_id.substring(0, 12)}...
+                            </div>
+                          </TableCell>
+                          <TableCell>{batch.file_count}</TableCell>
+                          <TableCell>{getBatchStatusBadge(batch.status)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDate(batch.created_at)}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDate(batch.submitted_at)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-green-600 font-medium">
+                                {batch.completed_count}
+                              </span>
+                              <span className="text-muted-foreground">/</span>
+                              <span className="text-red-600 font-medium">{batch.failed_count}</span>
+                              <span className="text-muted-foreground">/</span>
+                              <span className="text-blue-600 font-medium">
+                                {batch.processing_count}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {(batch.status === 'FAILED' || batch.status === 'PARTIAL_COMPLETE') &&
+                              batch.failed_count > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => retryBatch(batch.batch_id, batch.failed_count)}
+                                  disabled={loading}
+                                  className="flex items-center gap-1"
+                                >
+                                  {loading ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <RotateCw className="h-3 w-3" />
+                                  )}
+                                  Retry Failed ({batch.failed_count})
+                                </Button>
+                              )}
+                          </TableCell>
+                        </TableRow>
+                        {expandedBatches.has(batch.batch_id) && (
+                          <TableRow key={`${batch.batch_id}-files`}>
+                            <TableCell colSpan={7} className="bg-muted/30 p-0">
+                              <BatchFilesView
+                                batchId={batch.batch_id}
+                                loadFiles={loadBatchFiles}
+                                getStatusBadge={getFileStatusBadge}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
                     ))}
                   </TableBody>
                 </Table>
@@ -412,6 +497,64 @@ export default function QCBatchList(): React.JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+interface BatchFilesViewProps {
+  batchId: string
+  loadFiles: (batchId: string) => Promise<QCRecord[]>
+  getStatusBadge: (status: string) => React.JSX.Element
+}
+
+function BatchFilesView({
+  batchId,
+  loadFiles,
+  getStatusBadge
+}: BatchFilesViewProps): React.JSX.Element {
+  const [files, setFiles] = useState<QCRecord[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchFiles = async (): Promise<void> => {
+      setLoading(true)
+      const data = await loadFiles(batchId)
+      setFiles(data)
+      setLoading(false)
+    }
+    fetchFiles()
+  }, [batchId, loadFiles])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (files.length === 0) {
+    return <div className="p-8 text-center text-muted-foreground">No files found in this batch</div>
+  }
+
+  return (
+    <div className="p-4">
+      <div>
+        <Table>
+          <TableBody>
+            {files.map((file) => (
+              <TableRow key={file.qc_id}>
+                <TableCell className="text-sm">{file.original_name}</TableCell>
+                <TableCell>{getStatusBadge(file.status)}</TableCell>
+                <TableCell className="text-sm"> Retry Count : {file.retry_count || 0}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {file.submitted_at ? new Date(file.submitted_at).toLocaleString() : '—'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
