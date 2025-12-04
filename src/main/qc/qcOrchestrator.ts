@@ -94,6 +94,11 @@ class QCOrchestrator extends EventEmitter {
 
       // Initialize all modules
       await initializeQCDatabase()
+      
+      // Recover CONVERTED records from previous session
+      // (PDFs that were successfully created but not yet batched when app closed)
+      await this.recoverConvertedRecords()
+      
       initializeQCNotifications(mainWindow)
 
       // Initialize worker pool for heavy operations
@@ -157,6 +162,61 @@ class QCOrchestrator extends EventEmitter {
 
     this.isInitialized = false
     console.log('[QCOrchestrator] Shutdown complete')
+  }
+
+  private async recoverConvertedRecords(): Promise<void> {
+    try {
+      console.log('[QCOrchestrator] Recovering CONVERTED records from previous session...')
+      
+      // Query all CONVERTED records (PDFs successfully created, pending batch submission)
+      const query = `SELECT * FROM qc_records WHERE status = 'CONVERTED'`
+      const convertedRecords = await new Promise<QCRecord[]>((resolve, reject) => {
+        const Database = require('better-sqlite3')
+        const db = new Database(require('./qcConfig').getDatabasePath())
+        try {
+          const stmt = db.prepare(query)
+          const records = stmt.all() as QCRecord[]
+          resolve(records)
+          db.close()
+        } catch (err) {
+          reject(err)
+        }
+      })
+
+      if (convertedRecords.length === 0) {
+        console.log('[QCOrchestrator] No CONVERTED records found to recover')
+        return
+      }
+
+      console.log(`[QCOrchestrator] Recovered ${convertedRecords.length} CONVERTED records`)
+
+      // Add recovered records to batch queue
+      for (const record of convertedRecords) {
+        if (!record.pdf_path) {
+          console.warn(`[QCOrchestrator] Recovered CONVERTED record ${record.qc_id} missing pdf_path, skipping`)
+          continue
+        }
+
+        console.log(`[QCOrchestrator] Re-queueing for batch: ${record.original_name}`)
+        this.convertedPdfBatch.push({
+          qcId: record.qc_id,
+          pdfPath: record.pdf_path,
+          filename: record.original_name,
+          originalName: record.original_name,
+          folderPath: record.folder_path,
+          fileType: record.file_type
+        })
+      }
+
+      // Start batch timeout for recovery
+      if (this.convertedPdfBatch.length > 0) {
+        console.log(`[QCOrchestrator] Starting batch timeout for recovered files (${this.convertedPdfBatch.length} files)`)
+        this.startBatchTimeout()
+      }
+    } catch (error) {
+      console.error('[QCOrchestrator] Error recovering CONVERTED records:', error)
+      // Don't throw - let app continue even if recovery fails
+    }
   }
 
   private ensureFormatFoldersExist(watchFolders: string[]): void {
@@ -607,20 +667,14 @@ class QCOrchestrator extends EventEmitter {
       const pdfPath = await this.convertToPdf(filePath, paths.pdfPath)
       await updateQCPdfPath(record.qc_id, pdfPath)
 
-      // Step 2: Add to batch for batch submission (instead of immediate individual submission)
-      await this.addToBatch(
-        record.qc_id,
-        pdfPath,
-        filename,
-        record.original_name,
-        record.folder_path,
-        record.file_type
-      )
+      // Step 2: Mark as CONVERTED (PDF successfully created, pending batch submission)
+      await updateQCStatus(record.qc_id, 'CONVERTED')
+      this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'CONVERTED' })
 
-      // Release lock - batch submission will handle the rest
+      console.log(`[QCOrchestrator] File ${filename} converted to PDF, marked as CONVERTED`)
+
+      // Release lock - batch processor will handle adding to batch
       await releaseLock(lockBasePath, filePath)
-
-      console.log(`[QCOrchestrator] File ${filename} converted and added to batch`)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error(`[QCOrchestrator] Failed to process file ${filename}:`, error)
@@ -791,7 +845,16 @@ class QCOrchestrator extends EventEmitter {
     const zipPath = getBatchZipPath(batchId)
 
     try {
-      // Create ZIP file
+      // Step 1: Update all batch files from CONVERTED to SUBMITTING status
+      for (const file of batchFiles) {
+        await updateQCStatus(file.qcId, 'SUBMITTING')
+        this.emitToRenderer('qc:status-update', {
+          qcId: file.qcId,
+          status: 'SUBMITTING'
+        })
+      }
+
+      // Step 2: Create ZIP file
       console.log(`[QCOrchestrator] Creating ZIP for batch ${batchId}...`)
       await this.createBatchZip(batchId, batchFiles, zipPath)
 
@@ -935,7 +998,10 @@ class QCOrchestrator extends EventEmitter {
 
   private async pollProcessingRecords(): Promise<void> {
     try {
-      // Poll batches first (more efficient)
+      // Process CONVERTED records first - add them to batch for submission
+      await this.processConvertedRecords()
+
+      // Poll batches (more efficient)
       await this.pollProcessingBatches()
 
       // Then poll individual records without batch_id (backward compatibility)
@@ -951,6 +1017,47 @@ class QCOrchestrator extends EventEmitter {
       }
     } catch (error) {
       console.error('[QCOrchestrator] Error polling records:', error)
+    }
+  }
+
+  private async processConvertedRecords(): Promise<void> {
+    try {
+      // Query all CONVERTED records (PDFs successfully created, pending batch submission)
+      const query = `SELECT * FROM qc_records WHERE status = 'CONVERTED'`
+      const convertedRecords = await new Promise<QCRecord[]>((resolve, reject) => {
+        const db = require('better-sqlite3')(require('./qcConfig').getDatabasePath())
+        try {
+          const stmt = db.prepare(query)
+          const records = stmt.all() as QCRecord[]
+          resolve(records)
+          db.close()
+        } catch (err) {
+          reject(err)
+        }
+      })
+
+      // Add each CONVERTED record to batch for processing
+      for (const record of convertedRecords) {
+        if (!record.pdf_path) {
+          console.warn(`[QCOrchestrator] CONVERTED record ${record.qc_id} missing pdf_path, skipping`)
+          continue
+        }
+
+        console.log(`[QCOrchestrator] Processing CONVERTED record: ${record.original_name}`)
+        await this.addToBatch(
+          record.qc_id,
+          record.pdf_path,
+          record.original_name,
+          record.original_name,
+          record.folder_path,
+          record.file_type
+        )
+      }
+
+      // Check if we should submit the batch
+      await this.checkBatchSubmission()
+    } catch (error) {
+      console.error('[QCOrchestrator] Error processing converted records:', error)
     }
   }
 

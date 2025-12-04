@@ -3,6 +3,7 @@
 export type QCStatus =
   | 'QUEUED' // File detected, waiting in conversion queue
   | 'CONVERTING' // Converting DOCX to PDF
+  | 'CONVERTED' // PDF successfully created, pending batch submission
   | 'CONVERSION_FAILED' // Word to PDF conversion failed
   | 'SUBMITTING' // Uploading PDF to external API
   | 'PROCESSING' // External API running QC

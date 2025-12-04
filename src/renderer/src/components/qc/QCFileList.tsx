@@ -157,6 +157,7 @@ export default function QCFileList(): React.JSX.Element {
     const variants: Record<QCStatus, { className: string; label: string }> = {
       QUEUED: { className: 'bg-gray-500', label: 'Queued' },
       CONVERTING: { className: 'bg-indigo-500', label: 'Converting' },
+      CONVERTED: { className: 'bg-blue-400', label: 'Converted' },
       CONVERSION_FAILED: { className: 'bg-amber-600', label: 'Conversion Failed' },
       SUBMITTING: { className: 'bg-purple-500', label: 'Submitting' },
       PROCESSING: { className: 'bg-blue-500', label: 'Processing' },

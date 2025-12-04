@@ -169,6 +169,10 @@ export default function QCBatchList(): React.JSX.Element {
         className: 'bg-indigo-500',
         icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
       },
+      CONVERTED: {
+        className: 'bg-blue-400',
+        icon: <CheckCircle2 className="h-3 w-3 mr-1" />
+      },
       CONVERSION_FAILED: {
         className: 'bg-amber-600',
         icon: <AlertCircle className="h-3 w-3 mr-1" />

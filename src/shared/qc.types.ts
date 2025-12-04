@@ -3,6 +3,7 @@
 export type QCStatus =
   | 'QUEUED'
   | 'CONVERTING'
+  | 'CONVERTED' // PDF successfully created, pending batch submission
   | 'CONVERSION_FAILED'
   | 'SUBMITTING'
   | 'PROCESSING'
