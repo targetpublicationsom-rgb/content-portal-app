@@ -511,6 +511,7 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
+  // @ts-ignore - Reserved for future use
   private async waitForJobCompletion(qcId: string, filename: string): Promise<void> {
     // Wait until the job reaches COMPLETED or FAILED status
     // Polls the database until terminal state is reached
@@ -654,11 +655,13 @@ class QCOrchestrator extends EventEmitter {
     return (response.data as { pdfPath: string }).pdfPath
   }
 
+  // @ts-ignore - Reserved for future use
   private async submitToExternalAPI(
     qcId: string,
     pdfPath: string,
     filename: string
   ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const service = getQCExternalService()
 
     if (!service.isConfigured()) {
@@ -931,7 +934,11 @@ class QCOrchestrator extends EventEmitter {
 
       // Then poll individual records without batch_id (backward compatibility)
       const processingRecords = await getProcessingRecords()
-      const individualRecords = processingRecords.filter(r => !r.batch_id)
+      // SAFEGUARD: Only poll records in PROCESSING status
+      // Never auto-retry failed jobs - user must manually click "Retry" button
+      const individualRecords = processingRecords.filter(
+        r => !r.batch_id && r.status === 'PROCESSING'
+      )
 
       for (const record of individualRecords) {
         await this.checkQCStatus(record)
@@ -943,6 +950,8 @@ class QCOrchestrator extends EventEmitter {
 
   private async pollProcessingBatches(): Promise<void> {
     try {
+      // CONSTRAINT: getProcessingBatches() only returns batches with status != FAILED
+      // Once a batch fails completely, it is never polled again
       const batches = await getProcessingBatches()
 
       for (const batch of batches) {
@@ -983,7 +992,10 @@ class QCOrchestrator extends EventEmitter {
             updated_at: batchStatus.updated_at
           })
         } else if (job.status === 'FAILED') {
-          // Handle failure
+          // ⚠️ IMPORTANT CONSTRAINT: Job remains in batch_id even after failure
+          // Jobs stay associated with their original batch for audit trail
+          // User MUST manually click "Retry" button to attempt processing again
+          // Retry will clear batch_id and allow re-accumulation into new batch
           await updateQCStatus(record.qc_id, 'FAILED', job.error || 'QC processing failed')
           notifyQCFailed(record.original_name, job.error || 'QC processing failed')
           this.emitToRenderer('qc:status-update', {
@@ -1025,6 +1037,7 @@ class QCOrchestrator extends EventEmitter {
       if (status.status === 'COMPLETED' && status.result) {
         await this.handleQCComplete(record, status)
       } else if (status.status === 'FAILED') {
+        // Individual record failure - no auto-retry, awaits manual user action
         await updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
         notifyQCFailed(record.original_name, 'QC processing failed')
         this.emitToRenderer('qc:status-update', {
@@ -1132,15 +1145,25 @@ class QCOrchestrator extends EventEmitter {
     }
 
     console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
+    console.log(
+      `[QCOrchestrator] CONSTRAINT: Clearing batch_id for re-accumulation (was: ${record.batch_id})`
+    )
 
-    // Reset all retry-related fields including timestamp and status in a single update
+    // 🔒 SAFEGUARD: Only user action (manual retry) can reset batch assignment
+    // Clear batch_id to allow re-accumulation into potentially different batch
+    // Keep original_batch_id for audit trail showing first batch it belonged to
+    // Increment retry_count to track how many times user retried
+    const newRetryCount = (record.retry_count || 0) + 1
     await updateQCRecord(qcId, {
       status: 'QUEUED',
+      batch_id: null, // Clear current batch - allows re-accumulation
       external_qc_id: null,
       error_message: null,
-      retry_count: 0,
+      retry_count: newRetryCount,
       submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
     })
+
+    console.log(`[QCOrchestrator] Retry count incremented to: ${newRetryCount}`)
 
     this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
 

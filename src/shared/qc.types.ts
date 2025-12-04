@@ -35,7 +35,20 @@ export interface QCRecord {
   file_type: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | null
   source_files: string | null // JSON array of source file names
   // Batch processing fields
+  /**
+   * Current batch ID - set when job is submitted to backend as part of batch
+   * Once set, persists through entire job lifecycle (PROCESSING -> COMPLETED/FAILED)
+   * CONSTRAINT: Only manual user action (retryRecord) can clear this field
+   * When user clicks "Retry", batch_id is cleared to allow re-accumulation into new batch
+   * Never auto-retry: Failed jobs remain in original batch until explicit user action
+   */
   batch_id: string | null
+  /**
+   * Original/first batch ID - audit trail of initial batch submission
+   * Once set, never changes even if user retries and job enters different batch
+   * Preserved for traceability showing which batch job was first processed with
+   * Used for audit trail and retry history reconstruction
+   */
   original_batch_id: string | null
   batch_submission_order: number | null
 }

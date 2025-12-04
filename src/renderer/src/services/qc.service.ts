@@ -1,4 +1,4 @@
-import type { QCRecord, QCStats, QCConfig, QCFilters } from '../types/qc.types'
+import type { QCRecord, QCStats, QCConfig, QCFilters, QCBatch } from '../types/qc.types'
 
 interface APIResponse<T> {
   success: boolean
@@ -128,6 +128,14 @@ export const qcService = {
     if (!response.success) {
       throw new Error(response.error || 'Failed to retry record')
     }
+  },
+
+  async getBatches(statusFilter?: string[]): Promise<QCBatch[]> {
+    const response = (await window.api.qc.getBatches(statusFilter)) as APIResponse<QCBatch[]>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to get batches')
+    }
+    return response.data || []
   },
 
   onFileDetected(callback: (data: any) => void): () => void {

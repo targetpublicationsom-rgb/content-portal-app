@@ -7,7 +7,8 @@ import {
   getQCStats,
   deleteQCRecord,
   deleteAllQCRecords,
-  updateQCRecord
+  updateQCRecord,
+  getQCBatches
 } from './qcStateManager'
 import { getConfig, getQCOutputPaths, saveConfig } from './qcConfig'
 import { testConnection } from './qcExternalService'
@@ -381,6 +382,17 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('qc:get-batches', async (_event, statusFilter?: string[]) => {
+    try {
+      const batches = await getQCBatches(statusFilter as any)
+      return { success: true, data: batches }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get batches'
+      console.error('[QC IPC] Error getting batches:', error)
+      return { success: false, error: message }
+    }
+  })
+
   console.log('[QC IPC] Handlers registered')
 }
 
@@ -398,6 +410,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:retry-record')
   ipcMain.removeHandler('qc:convert-report-to-docx')
   ipcMain.removeHandler('qc:update-config')
+  ipcMain.removeHandler('qc:get-batches')
   ipcMain.removeHandler('qc:add-watch-folder')
   ipcMain.removeHandler('qc:remove-watch-folder')
 

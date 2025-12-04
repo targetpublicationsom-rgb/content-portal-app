@@ -49,6 +49,7 @@ export default function QCFileList(): React.JSX.Element {
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
     { path: '/qc/files', label: 'Files' },
+    { path: '/qc/batches', label: 'Batches' },
     { path: '/qc/settings', label: 'Settings' }
   ]
 
@@ -108,10 +109,10 @@ export default function QCFileList(): React.JSX.Element {
   useEffect(() => {
     loadRecords()
 
-    // Poll database every 2 seconds for updates
+    // Poll database every 5 seconds for updates
     const pollInterval = setInterval(() => {
       loadRecords()
-    }, 2000)
+    }, 5000)
 
     return () => {
       clearInterval(pollInterval)
@@ -358,7 +359,7 @@ export default function QCFileList(): React.JSX.Element {
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Search - Takes 50% */}
-            <div className="flex-[2] min-w-0">
+            <div className="flex-2 min-w-0">
               <Input
                 placeholder="Search by filename..."
                 value={searchQuery}

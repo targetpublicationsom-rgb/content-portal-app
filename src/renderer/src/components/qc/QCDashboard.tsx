@@ -15,6 +15,7 @@ export default function QCDashboard(): React.JSX.Element {
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
     { path: '/qc/files', label: 'Files' },
+    { path: '/qc/batches', label: 'Batches' },
     { path: '/qc/settings', label: 'Settings' }
   ]
 

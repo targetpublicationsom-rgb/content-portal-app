@@ -87,3 +87,25 @@ export interface QCFilters {
   filename?: string
   hasIssues?: boolean
 }
+
+export type BatchStatus =
+  | 'PENDING'
+  | 'SUBMITTED'
+  | 'PROCESSING'
+  | 'PARTIAL_COMPLETE'
+  | 'COMPLETED'
+  | 'FAILED'
+
+export interface QCBatch {
+  batch_id: string
+  zip_path: string
+  file_count: number
+  zip_size_bytes: number | null
+  created_at: string
+  submitted_at: string | null
+  completed_at: string | null
+  status: BatchStatus
+  completed_count: number
+  failed_count: number
+  processing_count: number
+}
