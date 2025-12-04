@@ -79,6 +79,7 @@ interface API {
     retryRecord: (qcId: string) => Promise<any>
     convertReportToDocx: (qcId: string) => Promise<any>
     getBatches: (statusFilter?: string[]) => Promise<any>
+    retryBatch: (batchId: string) => Promise<any>
     onFileDetected: (callback: (event: any, data: any) => void) => () => void
     onStatusUpdate: (callback: (event: any, data: any) => void) => () => void
     onQueueUpdate: (callback: (event: any, data: any) => void) => () => void

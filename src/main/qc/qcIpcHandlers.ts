@@ -393,6 +393,18 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('qc:retry-batch', async (_event, batchId: string) => {
+    try {
+      const orchestrator = getQCOrchestrator()
+      await orchestrator.retryFailedBatch(batchId)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to retry batch'
+      console.error('[QC IPC] Error retrying batch:', error)
+      return { success: false, error: message }
+    }
+  })
+
   console.log('[QC IPC] Handlers registered')
 }
 
@@ -411,6 +423,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:convert-report-to-docx')
   ipcMain.removeHandler('qc:update-config')
   ipcMain.removeHandler('qc:get-batches')
+  ipcMain.removeHandler('qc:retry-batch')
   ipcMain.removeHandler('qc:add-watch-folder')
   ipcMain.removeHandler('qc:remove-watch-folder')
 

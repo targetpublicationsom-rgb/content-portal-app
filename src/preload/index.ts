@@ -77,6 +77,7 @@ const api = {
     convertReportToDocx: (qcId: string) => ipcRenderer.invoke('qc:convert-report-to-docx', qcId),
     getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
     getBatches: (statusFilter?: string[]) => ipcRenderer.invoke('qc:get-batches', statusFilter),
+    retryBatch: (batchId: string) => ipcRenderer.invoke('qc:retry-batch', batchId),
     onFileDetected: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:file-detected', callback)
       return () => ipcRenderer.removeListener('qc:file-detected', callback)

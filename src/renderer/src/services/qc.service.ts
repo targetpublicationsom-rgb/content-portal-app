@@ -138,6 +138,13 @@ export const qcService = {
     return response.data || []
   },
 
+  async retryBatch(batchId: string): Promise<void> {
+    const response = (await window.api.qc.retryBatch(batchId)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to retry batch')
+    }
+  },
+
   onFileDetected(callback: (data: any) => void): () => void {
     return window.api.qc.onFileDetected((_event, data) => callback(data))
   },

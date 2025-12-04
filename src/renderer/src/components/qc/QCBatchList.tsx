@@ -4,11 +4,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table'
-import { Package, Loader2, CheckCircle2, AlertCircle, Clock, ChevronLeft, ChevronRight, RotateCw } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../ui/dialog'
+import {
+  Package,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw
+} from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCBatch, BatchStatus } from '../../types/qc.types'
 
 const ITEMS_PER_PAGE = 10
+
+interface RetryResult {
+  batchId: string
+  failedCount: number
+}
 
 export default function QCBatchList(): React.JSX.Element {
   const location = useLocation()
@@ -16,6 +38,8 @@ export default function QCBatchList(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [showRetryModal, setShowRetryModal] = useState(false)
+  const [retryResult, setRetryResult] = useState<RetryResult | null>(null)
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
@@ -119,12 +143,12 @@ export default function QCBatchList(): React.JSX.Element {
     }
   }
 
-  const retryBatch = async (batchId: string): Promise<void> => {
+  const retryBatch = async (batchId: string, failedCount: number): Promise<void> => {
     try {
       setLoading(true)
-      // TODO: Implement batch retry API call
-      // await qcService.retryBatch(batchId)
-      console.log(`Retrying batch: ${batchId}`)
+      await qcService.retryBatch(batchId)
+      setRetryResult({ batchId, failedCount })
+      setShowRetryModal(true)
       await loadBatches()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry batch')
@@ -142,7 +166,7 @@ export default function QCBatchList(): React.JSX.Element {
   }
 
   return (
-    <div className="pb-[10%] px-8 space-y-6">
+    <div className="pb-[10%] pt-8 px-8 space-y-6">
       {/* Navigation Tabs */}
       <div className="flex items-center gap-4 border-b pb-4 overflow-x-auto">
         {navItems.map((item) => (
@@ -242,22 +266,23 @@ export default function QCBatchList(): React.JSX.Element {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {batch.status === 'FAILED' && batch.failed_count > 0 && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => retryBatch(batch.batch_id)}
-                              disabled={loading}
-                              className="flex items-center gap-1"
-                            >
-                              {loading ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <RotateCw className="h-3 w-3" />
-                              )}
-                              Retry Failed
-                            </Button>
-                          )}
+                          {(batch.status === 'FAILED' || batch.status === 'PARTIAL_COMPLETE') &&
+                            batch.failed_count > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => retryBatch(batch.batch_id, batch.failed_count)}
+                                disabled={loading}
+                                className="flex items-center gap-1"
+                              >
+                                {loading ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <RotateCw className="h-3 w-3" />
+                                )}
+                                Retry Failed ({batch.failed_count})
+                              </Button>
+                            )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -342,6 +367,51 @@ export default function QCBatchList(): React.JSX.Element {
           </Card>
         </div>
       )}
+
+      {/* Retry Success Modal */}
+      <Dialog open={showRetryModal} onOpenChange={setShowRetryModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Batch Retry Successful
+            </DialogTitle>
+            <DialogDescription>
+              The failed files have been re-queued for processing.
+            </DialogDescription>
+          </DialogHeader>
+          {retryResult && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Batch ID</p>
+                  <p className="font-mono text-xs mt-1">
+                    {retryResult.batchId.substring(0, 12)}...
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Files Re-queued</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-1">{retryResult.failedCount}</p>
+                </div>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-4">
+                <p className="text-sm text-blue-900 dark:text-blue-100">
+                  <strong>What happens next:</strong>
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-blue-800 dark:text-blue-200">
+                  <li>• Failed files have been removed from the original batch</li>
+                  <li>• Files are now queued individually for re-processing</li>
+                  <li>• They will be grouped into new batches as they accumulate</li>
+                  <li>• You can monitor progress in the Files tab</li>
+                </ul>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowRetryModal(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

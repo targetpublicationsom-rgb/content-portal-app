@@ -36,7 +36,7 @@ import {
 } from './qcNotifications'
 import { acquireLock, releaseLock, checkLock, cleanStaleLocks } from './qcLockManager'
 import type { WatchEvent } from './qcWatcher'
-import type { QCRecord, BatchManifest } from '../../shared/qc.types'
+import type { QCRecord, BatchManifest, BatchStatus } from '../../shared/qc.types'
 import AdmZip from 'adm-zip'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -45,7 +45,8 @@ import {
   updateBatchRecords,
   getProcessingBatches,
   getQCRecordByExternalId,
-  recordBatchHistory
+  recordBatchHistory,
+  getRecordsByBatchId
 } from './qcStateManager'
 import { getBatchZipPath } from './qcConfig'
 
@@ -1172,6 +1173,62 @@ class QCOrchestrator extends EventEmitter {
 
     // Trigger queue processing immediately
     this.processQueue()
+  }
+
+  async retryFailedBatch(batchId: string): Promise<void> {
+    console.log(`[QCOrchestrator] Retrying failed files in batch: ${batchId}`)
+
+    // Get all records in this batch (regardless of current status)
+    const allRecords = await getRecordsByBatchId(batchId)
+    const failedRecords = allRecords.filter((r) => r.status === 'FAILED')
+
+    if (failedRecords.length === 0) {
+      console.log(`[QCOrchestrator] No failed records found in batch ${batchId}`)
+      return
+    }
+
+    console.log(
+      `[QCOrchestrator] Found ${failedRecords.length} failed records to retry in batch ${batchId}`
+    )
+
+    // Retry each failed record individually (this clears their batch_id)
+    for (const record of failedRecords) {
+      await this.retryRecord(record.qc_id)
+    }
+
+    // After retrying, get remaining records still in this batch
+    const remainingRecords = await getRecordsByBatchId(batchId)
+    const completedCount = remainingRecords.filter((r) => r.status === 'COMPLETED').length
+    const failedCount = remainingRecords.filter((r) => r.status === 'FAILED').length
+    const processingCount = remainingRecords.filter(
+      (r) => r.status === 'PROCESSING' || r.status === 'DOWNLOADING'
+    ).length
+
+    // Update batch status based on remaining records
+    let newStatus: BatchStatus
+    if (remainingRecords.length === 0) {
+      // All records were retried and removed from batch
+      newStatus = 'COMPLETED'
+    } else if (failedCount === 0 && processingCount === 0) {
+      // Only completed records remain
+      newStatus = 'COMPLETED'
+    } else if (failedCount > 0 && processingCount === 0) {
+      // Still has failed records
+      newStatus = 'FAILED'
+    } else if (completedCount > 0 && (failedCount > 0 || processingCount > 0)) {
+      // Mixed results
+      newStatus = 'PARTIAL_COMPLETE'
+    } else {
+      // Still processing
+      newStatus = 'PROCESSING'
+    }
+
+    await updateBatchStatus(batchId, newStatus, completedCount, failedCount, processingCount)
+
+    console.log(
+      `[QCOrchestrator] Batch ${batchId} updated: ${remainingRecords.length} records remaining, status: ${newStatus}`
+    )
+    console.log(`[QCOrchestrator] Batch retry complete: ${failedRecords.length} files re-queued`)
   }
 
   setMaxConcurrentJobs(count: number): void {
