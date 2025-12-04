@@ -43,6 +43,7 @@ export default function QCBatchList(): React.JSX.Element {
   const [showRetryModal, setShowRetryModal] = useState(false)
   const [retryResult, setRetryResult] = useState<RetryResult | null>(null)
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
+  const [retryingBatches, setRetryingBatches] = useState<Set<string>>(new Set())
 
   const navItems = [
     { path: '/qc', label: 'Dashboard' },
@@ -193,15 +194,20 @@ export default function QCBatchList(): React.JSX.Element {
 
   const retryBatch = async (batchId: string, failedCount: number): Promise<void> => {
     try {
-      setLoading(true)
+      setRetryingBatches((prev) => new Set(prev).add(batchId))
       await qcService.retryBatch(batchId)
+      // Immediately reload batches to reflect updated status
+      await loadBatches()
       setRetryResult({ batchId, failedCount })
       setShowRetryModal(true)
-      await loadBatches()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry batch')
     } finally {
-      setLoading(false)
+      setRetryingBatches((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(batchId)
+        return newSet
+      })
     }
   }
 
@@ -282,7 +288,7 @@ export default function QCBatchList(): React.JSX.Element {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="border rounded-md overflow-hidden max-h-[600px] flex flex-col">
+            <div className="border rounded-md overflow-hidden flex flex-col">
               <div className="overflow-y-auto flex-1">
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10">
@@ -345,10 +351,10 @@ export default function QCBatchList(): React.JSX.Element {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => retryBatch(batch.batch_id, batch.failed_count)}
-                                  disabled={loading}
+                                  disabled={retryingBatches.has(batch.batch_id)}
                                   className="flex items-center gap-1"
                                 >
-                                  {loading ? (
+                                  {retryingBatches.has(batch.batch_id) ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
                                   ) : (
                                     <RotateCw className="h-3 w-3" />
@@ -404,53 +410,6 @@ export default function QCBatchList(): React.JSX.Element {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* Statistics Summary */}
-      {batches.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Batches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{batches.length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Files</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {batches.reduce((sum, b) => sum + b.file_count, 0)}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {batches.reduce((sum, b) => sum + b.completed_count, 0)}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Failed</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {batches.reduce((sum, b) => sum + b.failed_count, 0)}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       )}
 
       {/* Retry Success Modal */}
