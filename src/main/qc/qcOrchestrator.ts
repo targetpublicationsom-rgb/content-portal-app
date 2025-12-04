@@ -10,7 +10,10 @@ import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
 import {
   getQCExternalService,
   configureQCExternalService,
-  QCStatusResponse
+  QCStatusResponse,
+  GatewayTimeoutError,
+  ServiceUnavailableError,
+  BatchSubmissionError
 } from './qcExternalService'
 import { initializeQCConfig, getConfig, getQCOutputPaths, getLockBasePath } from './qcConfig'
 import {
@@ -21,6 +24,7 @@ import {
   updateQCExternalId,
   updateQCReport,
   getProcessingRecords,
+  getConvertedRecords,
   getRecordByFilePath,
   getRecordByFolderAndType,
   getQCRecord,
@@ -169,19 +173,7 @@ class QCOrchestrator extends EventEmitter {
       console.log('[QCOrchestrator] Recovering CONVERTED records from previous session...')
       
       // Query all CONVERTED records (PDFs successfully created, pending batch submission)
-      const query = `SELECT * FROM qc_records WHERE status = 'CONVERTED'`
-      const convertedRecords = await new Promise<QCRecord[]>((resolve, reject) => {
-        const Database = require('better-sqlite3')
-        const db = new Database(require('./qcConfig').getDatabasePath())
-        try {
-          const stmt = db.prepare(query)
-          const records = stmt.all() as QCRecord[]
-          resolve(records)
-          db.close()
-        } catch (err) {
-          reject(err)
-        }
-      })
+      const convertedRecords = await getConvertedRecords()
 
       if (convertedRecords.length === 0) {
         console.log('[QCOrchestrator] No CONVERTED records found to recover')
@@ -567,6 +559,9 @@ class QCOrchestrator extends EventEmitter {
           })
         }
       }
+
+      // Check if batch should be submitted now that queue is empty
+      await this.checkBatchSubmission()
     } finally {
       this.isProcessingQueue = false
     }
@@ -673,7 +668,20 @@ class QCOrchestrator extends EventEmitter {
 
       console.log(`[QCOrchestrator] File ${filename} converted to PDF, marked as CONVERTED`)
 
-      // Release lock - batch processor will handle adding to batch
+      // Step 3: Immediately add to batch and check if should submit
+      await this.addToBatch(
+        record.qc_id,
+        pdfPath,
+        filename,
+        record.original_name,
+        record.folder_path,
+        record.file_type
+      )
+      
+      // Check if batch should be submitted now
+      await this.checkBatchSubmission()
+
+      // Release lock - batch submission or further processing will handle the rest
       await releaseLock(lockBasePath, filePath)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -929,9 +937,99 @@ class QCOrchestrator extends EventEmitter {
     } catch (error) {
       console.error(`[QCOrchestrator] Failed to submit batch ${batchId}:`, error)
       
-      // Update all records to FAILED status
+      // Handle 504 Gateway Timeout specifically - batch may have been created on backend
+      if (error instanceof GatewayTimeoutError) {
+        console.warn(
+          `[QCOrchestrator] Batch ${batchId} hit 504 timeout - batch likely created on backend, marking records for verification`
+        )
+
+        // Set records to PENDING_VERIFICATION - polling will detect backend batch
+        for (const file of batchFiles) {
+          await updateQCStatus(
+            file.qcId,
+            'PENDING_VERIFICATION',
+            'Batch submitted but received timeout - verifying with backend'
+          )
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'PENDING_VERIFICATION',
+            batchId: batchId,
+            message: 'Verifying batch submission status with backend...'
+          })
+        }
+
+        // Mark batch as SUBMITTED optimistically (polling will confirm)
+        try {
+          await updateBatchStatus(batchId, 'SUBMITTED')
+        } catch (updateError) {
+          console.error(`[QCOrchestrator] Failed to update batch ${batchId} to SUBMITTED:`, updateError)
+        }
+
+        // Emit recovery notification
+        this.emitToRenderer('qc:batch-recovery', {
+          batchId,
+          status: 'PENDING_VERIFICATION',
+          fileCount: batchFiles.length,
+          message: 'Batch submission received timeout - checking backend status...'
+        })
+
+        console.log(
+          `[QCOrchestrator] Records marked for verification. Polling will confirm batch ${batchId} creation.`
+        )
+        return
+      }
+
+      // Handle 503 Service Unavailable - similar recovery
+      if (error instanceof ServiceUnavailableError) {
+        console.warn(
+          `[QCOrchestrator] Batch ${batchId} got 503 Service Unavailable - marking for verification`
+        )
+
+        for (const file of batchFiles) {
+          await updateQCStatus(
+            file.qcId,
+            'PENDING_VERIFICATION',
+            'Service temporarily unavailable - will retry'
+          )
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'PENDING_VERIFICATION',
+            message: 'Service temporarily unavailable - retrying...'
+          })
+        }
+
+        this.emitToRenderer('qc:batch-recovery', {
+          batchId,
+          status: 'PENDING_VERIFICATION',
+          fileCount: batchFiles.length,
+          message: 'Service unavailable - will retry batch submission'
+        })
+
+        // Re-add to batch for retry
+        this.convertedPdfBatch.unshift(...batchFiles)
+        console.log(`[QCOrchestrator] Re-queued batch ${batchId} for retry`)
+        return
+      }
+
+      // Handle batch submission validation errors - mark as FAILED
+      if (error instanceof BatchSubmissionError) {
+        console.error(`[QCOrchestrator] Batch ${batchId} validation failed:`, error.message)
+
+        for (const file of batchFiles) {
+          await updateQCStatus(file.qcId, 'FAILED', `Batch validation failed: ${error.message}`)
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'FAILED',
+            error: error.message
+          })
+        }
+        throw error
+      }
+
+      // All other errors - mark as FAILED
+      const errorMessage = error instanceof Error ? error.message : String(error)
       for (const file of batchFiles) {
-        await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${error}`)
+        await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${errorMessage}`)
         this.emitToRenderer('qc:status-update', {
           qcId: file.qcId,
           status: 'FAILED'
@@ -998,11 +1096,11 @@ class QCOrchestrator extends EventEmitter {
 
   private async pollProcessingRecords(): Promise<void> {
     try {
-      // Process CONVERTED records first - add them to batch for submission
-      await this.processConvertedRecords()
-
       // Poll batches (more efficient)
       await this.pollProcessingBatches()
+
+      // Check for PENDING_VERIFICATION records (504 recovery)
+      await this.pollPendingVerificationRecords()
 
       // Then poll individual records without batch_id (backward compatibility)
       const processingRecords = await getProcessingRecords()
@@ -1020,44 +1118,71 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
-  private async processConvertedRecords(): Promise<void> {
+  private async pollPendingVerificationRecords(): Promise<void> {
     try {
-      // Query all CONVERTED records (PDFs successfully created, pending batch submission)
-      const query = `SELECT * FROM qc_records WHERE status = 'CONVERTED'`
-      const convertedRecords = await new Promise<QCRecord[]>((resolve, reject) => {
-        const db = require('better-sqlite3')(require('./qcConfig').getDatabasePath())
+      // Get all records in PENDING_VERIFICATION status (potential 504 recovery)
+      const processingRecords = await getProcessingRecords()
+      const pendingVerification = processingRecords.filter((r) => r.status === 'PENDING_VERIFICATION')
+
+      for (const record of pendingVerification) {
+        if (!record.batch_id) continue
+
         try {
-          const stmt = db.prepare(query)
-          const records = stmt.all() as QCRecord[]
-          resolve(records)
-          db.close()
-        } catch (err) {
-          reject(err)
-        }
-      })
+          console.log(
+            `[QCOrchestrator] Verifying PENDING_VERIFICATION record ${record.qc_id} in batch ${record.batch_id}`
+          )
 
-      // Add each CONVERTED record to batch for processing
-      for (const record of convertedRecords) {
-        if (!record.pdf_path) {
-          console.warn(`[QCOrchestrator] CONVERTED record ${record.qc_id} missing pdf_path, skipping`)
-          continue
-        }
+          // Get batch records to verify batch exists and has job_id
+          const batchRecords = await getRecordsByBatchId(record.batch_id)
+          if (batchRecords.length === 0) {
+            console.warn(
+              `[QCOrchestrator] No records found for batch ${record.batch_id}, batch may not have been created`
+            )
+            // Batch not found - mark as FAILED
+            await updateQCStatus(
+              record.qc_id,
+              'FAILED',
+              'Batch verification failed - batch not found on backend'
+            )
+            this.emitToRenderer('qc:status-update', {
+              qcId: record.qc_id,
+              status: 'FAILED',
+              error: 'Batch not found'
+            })
+            continue
+          }
 
-        console.log(`[QCOrchestrator] Processing CONVERTED record: ${record.original_name}`)
-        await this.addToBatch(
-          record.qc_id,
-          record.pdf_path,
-          record.original_name,
-          record.original_name,
-          record.folder_path,
-          record.file_type
-        )
+          // Check if record has external_qc_id (job_id) assigned
+          if (!record.external_qc_id) {
+            console.warn(
+              `[QCOrchestrator] Record ${record.qc_id} has no external_qc_id yet, batch may still be processing`
+            )
+            // Still waiting for job_ids, keep in PENDING_VERIFICATION
+            continue
+          }
+
+          // Record has job_id and batch_id exists - transition to PROCESSING
+          console.log(
+            `[QCOrchestrator] Verified record ${record.qc_id} - batch ${record.batch_id} exists with job ${record.external_qc_id}`
+          )
+          await updateQCStatus(record.qc_id, 'PROCESSING')
+          this.emitToRenderer('qc:status-update', {
+            qcId: record.qc_id,
+            status: 'PROCESSING',
+            batchId: record.batch_id,
+            message: 'Batch verified - now processing'
+          })
+
+          // Now it will be polled as normal PROCESSING record
+        } catch (error) {
+          console.error(
+            `[QCOrchestrator] Error verifying record ${record.qc_id}:`,
+            error
+          )
+        }
       }
-
-      // Check if we should submit the batch
-      await this.checkBatchSubmission()
     } catch (error) {
-      console.error('[QCOrchestrator] Error processing converted records:', error)
+      console.error('[QCOrchestrator] Error polling pending verification records:', error)
     }
   }
 

@@ -3,6 +3,28 @@ import * as fs from 'fs'
 import FormData from 'form-data'
 import type { BatchSubmitResponse, BatchStatusResponse, BatchManifest } from '../../shared/qc.types'
 
+// Custom error types for different failure scenarios
+export class GatewayTimeoutError extends Error {
+  constructor(message: string, public httpStatus: number, public batchId?: string) {
+    super(message)
+    this.name = 'GatewayTimeoutError'
+  }
+}
+
+export class ServiceUnavailableError extends Error {
+  constructor(message: string, public httpStatus: number) {
+    super(message)
+    this.name = 'ServiceUnavailableError'
+  }
+}
+
+export class BatchSubmissionError extends Error {
+  constructor(message: string, public httpStatus: number) {
+    super(message)
+    this.name = 'BatchSubmissionError'
+  }
+}
+
 export interface QCSubmitResponse {
   success: boolean
   job_id: string
@@ -147,6 +169,29 @@ class QCExternalService {
       return response.data
     } catch (error) {
       this.handleError('Failed to submit batch for QC', error)
+      
+      // Re-throw with specific error types based on HTTP status
+      if (axios.isAxiosError(error) && error.response) {
+        const status = error.response.status
+        if (status === 504) {
+          throw new GatewayTimeoutError(
+            'Batch submission gateway timeout - batch may have been created on backend',
+            status,
+            batchId
+          )
+        } else if (status === 503) {
+          throw new ServiceUnavailableError(
+            'QC service temporarily unavailable - batch may be queued',
+            status
+          )
+        } else if (status === 400 || status === 422) {
+          throw new BatchSubmissionError(
+            `Batch submission validation failed: ${error.response.data?.message || error.message}`,
+            status
+          )
+        }
+      }
+      
       throw error
     }
   }

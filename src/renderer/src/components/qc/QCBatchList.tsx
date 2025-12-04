@@ -177,6 +177,14 @@ export default function QCBatchList(): React.JSX.Element {
         className: 'bg-amber-600',
         icon: <AlertCircle className="h-3 w-3 mr-1" />
       },
+      SUBMITTING: {
+        className: 'bg-purple-500',
+        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      },
+      PENDING_VERIFICATION: {
+        className: 'bg-yellow-500',
+        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      },
       PROCESSING: {
         className: 'bg-purple-500',
         icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />

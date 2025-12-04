@@ -510,6 +510,19 @@ export async function getProcessingRecords(): Promise<QCRecord[]> {
   return rows as QCRecord[]
 }
 
+// Get records in CONVERTED state (PDFs ready for batch submission)
+// Only returns records that haven't been added to a batch yet (batch_id IS NULL)
+export async function getConvertedRecords(): Promise<QCRecord[]> {
+  if (!db) throw new Error('Database not initialized')
+
+  const rows = await allAsync(`
+    SELECT * FROM qc_records 
+    WHERE status = 'CONVERTED' AND batch_id IS NULL
+  `)
+
+  return rows as QCRecord[]
+}
+
 // Get most recent record by file path (for duplicate detection)
 export async function getRecordByFilePath(filePath: string): Promise<QCRecord | null> {
   if (!db) throw new Error('Database not initialized')

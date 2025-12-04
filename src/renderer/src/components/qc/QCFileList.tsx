@@ -160,6 +160,7 @@ export default function QCFileList(): React.JSX.Element {
       CONVERTED: { className: 'bg-blue-400', label: 'Converted' },
       CONVERSION_FAILED: { className: 'bg-amber-600', label: 'Conversion Failed' },
       SUBMITTING: { className: 'bg-purple-500', label: 'Submitting' },
+      PENDING_VERIFICATION: { className: 'bg-yellow-500', label: 'Verifying Batch' },
       PROCESSING: { className: 'bg-blue-500', label: 'Processing' },
       DOWNLOADING: { className: 'bg-orange-500', label: 'Downloading' },
       COMPLETED: { className: 'bg-green-500', label: 'Completed' },

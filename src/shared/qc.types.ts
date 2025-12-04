@@ -6,6 +6,7 @@ export type QCStatus =
   | 'CONVERTED' // PDF successfully created, pending batch submission
   | 'CONVERSION_FAILED'
   | 'SUBMITTING'
+  | 'PENDING_VERIFICATION' // Batch submitted with 504/503 error - verifying backend status
   | 'PROCESSING'
   | 'DOWNLOADING'
   | 'COMPLETED'
