@@ -3,6 +3,7 @@
 export type QCStatus =
   | 'QUEUED'
   | 'CONVERTING'
+  | 'CONVERSION_FAILED'
   | 'SUBMITTING'
   | 'PROCESSING'
   | 'DOWNLOADING'

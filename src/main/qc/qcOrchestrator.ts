@@ -630,11 +630,16 @@ class QCOrchestrator extends EventEmitter {
 
       // Use the existing record ID, don't create a new one
       if (recordId) {
-        await updateQCStatus(recordId, 'FAILED', errorMessage)
+        // Check if this is a conversion error (happened during CONVERTING status)
+        const currentRecord = await getQCRecord(recordId)
+        const isConversionError = currentRecord?.status === 'CONVERTING'
+        
+        const failureStatus = isConversionError ? 'CONVERSION_FAILED' : 'FAILED'
+        await updateQCStatus(recordId, failureStatus, errorMessage)
         notifyQCFailed(filename, errorMessage)
         this.emitToRenderer('qc:status-update', {
           qcId: recordId,
-          status: 'FAILED',
+          status: failureStatus,
           error: errorMessage
         })
       }
