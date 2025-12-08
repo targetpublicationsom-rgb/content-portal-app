@@ -181,9 +181,9 @@ export function registerQCIpcHandlers(): void {
           }
         }
 
-        // Update record status to QUEUED for retry (keep record visible)
+        // Update record status to VALIDATING for retry (shows progress)
         await updateQCRecord(qcId, {
-          status: 'QUEUED',
+          status: 'VALIDATING',
           error_message: null,
           retry_count: record.retry_count + 1
         })

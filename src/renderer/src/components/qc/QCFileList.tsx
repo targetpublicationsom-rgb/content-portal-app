@@ -156,6 +156,8 @@ export default function QCFileList(): React.JSX.Element {
   const getStatusBadge = (status: QCStatus): React.JSX.Element => {
     const variants: Record<QCStatus, { className: string; label: string }> = {
       QUEUED: { className: 'bg-gray-500', label: 'Queued' },
+      VALIDATING: { className: 'bg-cyan-500', label: 'Validating' },
+      MERGING: { className: 'bg-teal-500', label: 'Merging Files' },
       CONVERTING: { className: 'bg-indigo-500', label: 'Converting' },
       CONVERTED: { className: 'bg-blue-400', label: 'Converted' },
       CONVERSION_FAILED: { className: 'bg-amber-600', label: 'Conversion Failed' },

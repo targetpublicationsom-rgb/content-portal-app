@@ -456,13 +456,13 @@ export async function getQCStats(): Promise<QCStats> {
 
   byStatus.forEach((row) => {
     const status = row.status.toLowerCase()
-    if (status === 'queued') statusCounts.queued = row.count
-    else if (status === 'converting' || status === 'submitting')
+    if (status === 'queued' || status === 'validating' || status === 'merging') statusCounts.queued += row.count
+    else if (status === 'converting' || status === 'submitting' || status === 'converted')
       statusCounts.converting += row.count
-    else if (status === 'processing' || status === 'downloading')
+    else if (status === 'processing' || status === 'downloading' || status === 'pending_verification')
       statusCounts.processing += row.count
     else if (status === 'completed') statusCounts.completed = row.count
-    else if (status === 'failed' || status === 'numbering_failed') statusCounts.failed += row.count
+    else if (status === 'failed' || status === 'numbering_failed' || status === 'conversion_failed') statusCounts.failed += row.count
   })
 
   const todayStart = new Date()
@@ -789,9 +789,9 @@ export async function getBatchStats(batchId: string): Promise<{
     `SELECT 
       COUNT(*) as total,
       SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
-      SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
-      SUM(CASE WHEN status IN ('PROCESSING', 'SUBMITTING', 'DOWNLOADING') THEN 1 ELSE 0 END) as processing,
-      SUM(CASE WHEN status IN ('QUEUED', 'CONVERTING') THEN 1 ELSE 0 END) as queued
+      SUM(CASE WHEN status IN ('FAILED', 'CONVERSION_FAILED', 'NUMBERING_FAILED') THEN 1 ELSE 0 END) as failed,
+      SUM(CASE WHEN status IN ('PROCESSING', 'SUBMITTING', 'DOWNLOADING', 'PENDING_VERIFICATION') THEN 1 ELSE 0 END) as processing,
+      SUM(CASE WHEN status IN ('QUEUED', 'VALIDATING', 'MERGING', 'CONVERTING', 'CONVERTED') THEN 1 ELSE 0 END) as queued
      FROM qc_records 
      WHERE batch_id = ?`,
     [batchId]

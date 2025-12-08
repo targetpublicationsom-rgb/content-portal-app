@@ -286,7 +286,13 @@ class QCOrchestrator extends EventEmitter {
     }
 
     try {
-      // Step 1: Validate numbering before merge
+      // Step 1: Set VALIDATING status for retry
+      if (existingQcId) {
+        await updateQCStatus(existingQcId, 'VALIDATING')
+        this.emitToRenderer('qc:status-update', { qcId: existingQcId, status: 'VALIDATING' })
+      }
+
+      // Validate numbering before merge
       console.log(`[QCOrchestrator] Validating numbering for: ${chapterName}`)
       const validationResult = await validateNumbering(mcqs, solution)
 
@@ -349,7 +355,13 @@ class QCOrchestrator extends EventEmitter {
 
       console.log(`[QCOrchestrator] ✓ Numbering validation passed for: ${chapterName}`)
 
-      // Step 2: Create merged file path in .qc folder
+      // Step 2: Set MERGING status before merge
+      if (existingQcId) {
+        await updateQCStatus(existingQcId, 'MERGING')
+        this.emitToRenderer('qc:status-update', { qcId: existingQcId, status: 'MERGING' })
+      }
+
+      // Create merged file path in .qc folder
       const qcFolder = path.join(folderPath, '.qc')
       if (!fsSync.existsSync(qcFolder)) {
         fsSync.mkdirSync(qcFolder, { recursive: true })

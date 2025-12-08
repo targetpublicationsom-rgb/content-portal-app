@@ -165,6 +165,14 @@ export default function QCBatchList(): React.JSX.Element {
         className: 'bg-gray-500',
         icon: <Clock className="h-3 w-3 mr-1" />
       },
+      VALIDATING: {
+        className: 'bg-cyan-500',
+        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      },
+      MERGING: {
+        className: 'bg-teal-500',
+        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      },
       CONVERTING: {
         className: 'bg-indigo-500',
         icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />

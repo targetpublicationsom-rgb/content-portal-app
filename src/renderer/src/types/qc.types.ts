@@ -2,6 +2,8 @@
 
 export type QCStatus =
   | 'QUEUED' // File detected, waiting in conversion queue
+  | 'VALIDATING' // Checking numbering for MCQs+Solution
+  | 'MERGING' // Merging MCQs and Solution files
   | 'CONVERTING' // Converting DOCX to PDF
   | 'CONVERTED' // PDF successfully created, pending batch submission
   | 'CONVERSION_FAILED' // Word to PDF conversion failed

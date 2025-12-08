@@ -2,6 +2,8 @@
 
 export type QCStatus =
   | 'QUEUED'
+  | 'VALIDATING' // Checking numbering for MCQs+Solution
+  | 'MERGING' // Merging MCQs and Solution files
   | 'CONVERTING'
   | 'CONVERTED' // PDF successfully created, pending batch submission
   | 'CONVERSION_FAILED'
