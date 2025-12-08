@@ -423,6 +423,19 @@ class QCOrchestrator extends EventEmitter {
       }
     } catch (error) {
       console.error(`[QCOrchestrator] Merge failed for ${chapterName}:`, error)
+      
+      // Set status to FAILED if we have an existing QC record
+      if (existingQcId) {
+        await updateQCRecord(existingQcId, {
+          status: 'FAILED',
+          error_message: `Merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        })
+        const updatedRecord = await getQCRecord(existingQcId)
+        if (updatedRecord) {
+          this.emitToRenderer('qc:status-update', { record: updatedRecord })
+        }
+      }
+      
       this.emitToRenderer('qc:error', {
         message: `Failed to merge files for ${chapterName}: ${error instanceof Error ? error.message : 'Unknown error'}`
       })

@@ -10,6 +10,9 @@ import type { WorkerMessage, WorkerResponse } from './types'
  * Uses PowerShell COM automation with Microsoft Word
  */
 
+// Timeout for merge operation (2 minutes)
+const MERGE_TIMEOUT_MS = 120000
+
 interface MergeDocxMessage {
   mcqsPath: string
   solutionPath: string
@@ -42,69 +45,55 @@ async function mergeDocxFiles(
     fs.mkdirSync(outputDir, { recursive: true })
   }
 
-  // PowerShell script to merge documents
+  // Delete existing output file to prevent conflicts
+  if (fs.existsSync(outputPath)) {
+    console.log(`[WordMerger] Deleting existing output file: ${outputPath}`)
+    fs.unlinkSync(outputPath)
+  }
+
+  // PowerShell script to merge documents using InsertFile for better performance
   const psScript = `
     try {
       $ErrorActionPreference = 'Stop'
-      
-      # Start Word application
+
+      Write-Host "[WordMerger] Starting Word..."
       $word = New-Object -ComObject Word.Application
       $word.Visible = $false
       $word.DisplayAlerts = 0
-      
-      Write-Host "[WordMerger] Opening MCQs document..."
-      # Open MCQs document
-      $mcqsDoc = $word.Documents.Open("${absMcqsPath}", $false, $false, $false)
-      
-      Write-Host "[WordMerger] Opening Solution document..."
-      # Open Solution document (read-only)
-      $solutionDoc = $word.Documents.Open("${absSolutionPath}", $false, $true, $false)
-      
-      Write-Host "[WordMerger] Merging documents..."
-      # Move to end of MCQs document
-      $mcqsDoc.Activate()
+
+      Write-Host "[WordMerger] Opening MCQs…"
+      $mcqsDoc = $word.Documents.Open("${absMcqsPath}", $false, $false)
+
+      Write-Host "[WordMerger] Moving to end & inserting page break…"
       $range = $mcqsDoc.Content
-      $range.Collapse(0) # Collapse to end
-      
-      # Insert page break before adding solution content
-      $range.InsertBreak(7) # wdPageBreak = 7
-      
-      # Copy all content from Solution document
-      $solutionContent = $solutionDoc.Content
-      $solutionContent.Copy()
-      
-      # Paste into MCQs document
-      $range.Paste()
-      
-      Write-Host "[WordMerger] Saving merged document..."
-      # Save as new file
-      $mcqsDoc.SaveAs2("${absOutputPath}", 16) # wdFormatDocumentDefault = 16
-      
-      Write-Host "[WordMerger] Cleaning up..."
-      # Close documents
-      $solutionDoc.Close($false)
+      $range.Collapse(1)        # wdCollapseEnd = 1
+      $range.InsertBreak(7)     # wdPageBreak = 7
+
+      Write-Host "[WordMerger] Inserting Solution document…"
+      $range.InsertFile("${absSolutionPath}")
+
+      Write-Host "[WordMerger] Saving merged document…"
+      $wdFormatXMLDocument = 12
+      $mcqsDoc.SaveAs2("${absOutputPath}", $wdFormatXMLDocument)
+
+      Write-Host "[WordMerger] Cleaning up…"
       $mcqsDoc.Close($false)
       $word.Quit()
-      
-      # Release COM objects
-      [System.Runtime.Interopservices.Marshal]::ReleaseComObject($solutionDoc) | Out-Null
-      [System.Runtime.Interopservices.Marshal]::ReleaseComObject($mcqsDoc) | Out-Null
-      [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
-      [System.GC]::Collect()
-      [System.GC]::WaitForPendingFinalizers()
-      
-      Write-Host "[WordMerger] Merge completed successfully"
+
+      [System.Runtime.InteropServices.Marshal]::ReleaseComObject($range) | Out-Null
+      [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mcqsDoc) | Out-Null
+      [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+
+      [GC]::Collect()
+      [GC]::WaitForPendingFinalizers()
+
+      Write-Host "[WordMerger] Merge success!"
       exit 0
-      
-    } catch {
-      Write-Error "Error: $_"
-      Write-Error $_.Exception.Message
-      
-      # Cleanup on error
+    }
+    catch {
+      Write-Error "[WordMerger] FAILED: $($_.Exception.Message)"
       if ($mcqsDoc) { $mcqsDoc.Close($false) }
-      if ($solutionDoc) { $solutionDoc.Close($false) }
       if ($word) { $word.Quit() }
-      
       exit 1
     }
   `
@@ -120,6 +109,31 @@ async function mergeDocxFiles(
 
     let stdout = ''
     let stderr = ''
+    let timeoutId: NodeJS.Timeout | null = null
+    let processKilled = false
+
+    // Set timeout to prevent indefinite hanging
+    timeoutId = setTimeout(() => {
+      console.error('[WordMerger] Merge operation timed out after 2 minutes')
+      processKilled = true
+      
+      // Try graceful termination first
+      ps.kill('SIGTERM')
+      
+      // Force kill after 5 seconds if still running
+      setTimeout(() => {
+        if (!ps.killed) {
+          console.error('[WordMerger] Force killing hung process')
+          ps.kill('SIGKILL')
+        }
+      }, 5000)
+      
+      reject(
+        new Error(
+          'Word merge operation timed out - Word application may have hung. Please try again.'
+        )
+      )
+    }, MERGE_TIMEOUT_MS)
 
     ps.stdout.on('data', (data) => {
       const output = data.toString()
@@ -134,21 +148,43 @@ async function mergeDocxFiles(
     })
 
     ps.on('close', (code) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+
+      if (processKilled) {
+        // Already handled by timeout
+        return
+      }
+
       if (code === 0) {
         // Verify output file exists
         if (fs.existsSync(outputPath)) {
-          console.log(`[WordMerger] Successfully merged to: ${outputPath}`)
+          // Validate file has content
+          const stats = fs.statSync(outputPath)
+          if (stats.size === 0) {
+            reject(new Error('Merge completed but output file is empty (0 bytes)'))
+            return
+          }
+          
+          console.log(`[WordMerger] Successfully merged to: ${outputPath} (${stats.size} bytes)`)
           resolve(outputPath)
         } else {
-          reject(new Error('Merge completed but output file not found'))
+          reject(new Error('Merge completed but output file not found at: ' + outputPath))
         }
       } else {
-        reject(new Error(`PowerShell script failed with code ${code}: ${stderr || stdout}`))
+        const errorMsg = stderr || stdout || 'Unknown error'
+        reject(new Error(`Word merge failed (exit code ${code}). Error: ${errorMsg}`))
       }
     })
 
     ps.on('error', (err) => {
-      reject(new Error(`Failed to start PowerShell: ${err.message}`))
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      reject(new Error(`Failed to start PowerShell process: ${err.message}`))
     })
   })
 }
@@ -166,11 +202,7 @@ if (parentPort) {
       switch (message.type) {
         case 'merge-docx': {
           const data = message.data as MergeDocxMessage
-          const mergedPath = await mergeDocxFiles(
-            data.mcqsPath,
-            data.solutionPath,
-            data.outputPath
-          )
+          const mergedPath = await mergeDocxFiles(data.mcqsPath, data.solutionPath, data.outputPath)
           response.type = 'success'
           response.data = { mergedPath }
           break

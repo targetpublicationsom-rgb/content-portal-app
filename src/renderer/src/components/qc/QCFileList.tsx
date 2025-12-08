@@ -65,7 +65,7 @@ export default function QCFileList(): React.JSX.Element {
 
       // Preprocess LaTeX expressions to ensure they're properly formatted
       let processedContent = markdownContent
-      
+
       // Replace inline LaTeX with HTML spans containing KaTeX-rendered content
       processedContent = processedContent.replace(/\$([^\$]+?)\$/g, (match, latex) => {
         try {
@@ -78,7 +78,7 @@ export default function QCFileList(): React.JSX.Element {
           return match
         }
       })
-      
+
       // Replace display LaTeX ($$...$$) with KaTeX-rendered content
       processedContent = processedContent.replace(/\$\$([^\$]+?)\$\$/g, (match, latex) => {
         try {
@@ -91,12 +91,28 @@ export default function QCFileList(): React.JSX.Element {
           return match
         }
       })
-      
+
       // Parse markdown to HTML - use marked.parse() which returns string synchronously for simple markdown
       const html = marked.parse(processedContent, { async: false }) as string
-      
+
       return DOMPurify.sanitize(html, {
-        ADD_TAGS: ['span', 'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mtext', 'annotation', 'munderover', 'munder', 'mover'],
+        ADD_TAGS: [
+          'span',
+          'math',
+          'semantics',
+          'mrow',
+          'mi',
+          'mo',
+          'mn',
+          'msup',
+          'msub',
+          'mfrac',
+          'mtext',
+          'annotation',
+          'munderover',
+          'munder',
+          'mover'
+        ],
         ADD_ATTR: ['class', 'xmlns', 'encoding', 'display', 'style']
       })
     } catch (err) {
@@ -487,6 +503,7 @@ export default function QCFileList(): React.JSX.Element {
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
                           {(record.status === 'CONVERSION_FAILED' ||
+                            record.status === 'FAILED' ||
                             record.status === 'NUMBERING_FAILED') && (
                             <Button
                               variant="ghost"
