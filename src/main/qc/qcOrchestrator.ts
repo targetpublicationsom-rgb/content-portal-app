@@ -1246,12 +1246,12 @@ class QCOrchestrator extends EventEmitter {
         if (!record) continue
 
         if (job.status === 'COMPLETED' && job.result) {
-          // Handle completion
+          // Handle completion - use issue_count from job response
           await this.handleQCComplete(record, {
             job_id: job.job_id,
             status: 'COMPLETED',
             result: job.result,
-            issues_count: job.issues_count,
+            issues_count: job.issue_count || job.issues_count || 0, // API returns issue_count
             created_at: batchStatus.submitted_at,
             updated_at: batchStatus.updated_at
           })

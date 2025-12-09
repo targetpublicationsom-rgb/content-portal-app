@@ -177,7 +177,8 @@ export interface BatchStatusResponse {
     started_at?: string
     completed_at?: string
     failed_at?: string
-    issues_count?: number
+    issue_count?: number // API returns this field name
+    issues_count?: number // Keep for backwards compatibility
     result?: string
     error?: string
     error_code?: string
