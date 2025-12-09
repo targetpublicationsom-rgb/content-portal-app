@@ -4,6 +4,17 @@ import path from 'path'
 import type { NumberingValidationResult } from '../shared/numbering.types'
 
 /**
+ * Extract expected count from filename
+ * Looks for pattern like "Questions[244].docx" or "Answers[244].docx"
+ * Returns the number inside brackets, or null if not found
+ */
+function extractExpectedCount(filePath: string): number | null {
+    const filename = path.basename(filePath)
+    const match = filename.match(/\[(\d+)\]/)
+    return match ? parseInt(match[1], 10) : null
+}
+
+/**
  * Get the path to the numbering checker executable
  */
 function getNumberingCheckerPath(): string {
@@ -35,27 +46,46 @@ function getPandocPath(): string {
 
 /**
  * Validate numbering in question and solution DOCX files
+ * @param questionsPath - Path to questions DOCX file
+ * @param solutionsPath - Path to solutions DOCX file
+ * @param expectedCount - Optional expected count. If not provided, will extract from filename brackets [n]
  */
 export async function validateNumbering(
     questionsPath: string,
     solutionsPath: string,
+    expectedCount?: number
 ): Promise<NumberingValidationResult> {
     return new Promise((resolve, reject) => {
         const checkerPath = getNumberingCheckerPath()
         const pandocPath = getPandocPath()
 
+        // Extract expected count from filenames if not explicitly provided
+        const questionsCount = extractExpectedCount(questionsPath)
+        const solutionsCount = extractExpectedCount(solutionsPath)
+        
+        // Use provided count, or extracted count (questions takes priority), or null
+        const finalExpectedCount = expectedCount ?? questionsCount ?? solutionsCount
+
         console.log('[Numbering Checker] Starting validation...')
         console.log('[Numbering Checker] Questions:', questionsPath)
         console.log('[Numbering Checker] Solutions:', solutionsPath)
+        if (finalExpectedCount) {
+            console.log('[Numbering Checker] Expected count:', finalExpectedCount)
+        }
         console.log('[Numbering Checker] Checker path:', checkerPath)
         console.log('[Numbering Checker] Pandoc path:', pandocPath)
 
-        // Spawn the numbering checker process with JSON output flag
+        // Build args with optional expected count
         const args = [
             questionsPath,
             solutionsPath,
             '--json'
         ]
+        
+        // Add expected count if available
+        if (finalExpectedCount !== null && finalExpectedCount !== undefined) {
+            args.push('--expected', finalExpectedCount.toString())
+        }
 
         // Set PATH to include pandoc directory
         const env = {
