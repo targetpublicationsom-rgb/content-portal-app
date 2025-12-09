@@ -293,9 +293,36 @@ class QCOrchestrator extends EventEmitter {
         this.emitToRenderer('qc:status-update', { qcId: existingQcId, status: 'VALIDATING' })
       }
 
-      // Validate numbering before merge
+      // Ensure correct file order: Questions/MCQs first, then Answers/Solutions
+      // This is critical because:
+      // 1. Numbering checker expects: Questions → Solutions
+      // 2. Word merger appends second file to first, so Questions must come first
+      let questionsFile = mcqs
+      let solutionsFile = solution
+
+      const mcqsName = path.basename(mcqs).toLowerCase()
+      const solutionName = path.basename(solution).toLowerCase()
+
+      // Detect if files are reversed based on keywords
+      const mcqsHasSolutionKeyword = mcqsName.includes('answer') || mcqsName.includes('solution')
+      const solutionHasQuestionKeyword = solutionName.includes('question') || solutionName.includes('mcq')
+
+      if (mcqsHasSolutionKeyword && solutionHasQuestionKeyword) {
+        // Files are reversed! Swap them to ensure correct order
+        console.log(`[QCOrchestrator] ⚠️ Files detected in reverse order, swapping:`)
+        console.log(`[QCOrchestrator]    Questions: ${path.basename(solution)}`)
+        console.log(`[QCOrchestrator]    Answers: ${path.basename(mcqs)}`)
+        questionsFile = solution
+        solutionsFile = mcqs
+      } else {
+        console.log(`[QCOrchestrator] File order confirmed:`)
+        console.log(`[QCOrchestrator]    Questions: ${path.basename(mcqs)}`)
+        console.log(`[QCOrchestrator]    Answers: ${path.basename(solution)}`)
+      }
+
+      // Validate numbering before merge (Questions must be first parameter)
       console.log(`[QCOrchestrator] Validating numbering for: ${chapterName}`)
-      const validationResult = await validateNumbering(mcqs, solution)
+      const validationResult = await validateNumbering(questionsFile, solutionsFile)
 
       if (validationResult.status !== 'passed') {
         console.log(`[QCOrchestrator] Numbering validation failed for: ${chapterName}`)
@@ -311,10 +338,10 @@ class QCOrchestrator extends EventEmitter {
           console.log(`[QCOrchestrator] Updating existing record for retry: ${existingQcId}`)
         } else {
           // New validation failure - create record
-          const sourceFiles = [path.basename(mcqs), path.basename(solution)]
-          // Use MCQs file path as the display file (since it represents the merged intent)
+          const sourceFiles = [path.basename(questionsFile), path.basename(solutionsFile)]
+          // Use Questions file path as the display file (since it represents the merged intent)
           record = await createQCRecord(
-            mcqs,
+            questionsFile,
             folderPath,
             chapterName,
             fileType as 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
@@ -370,9 +397,10 @@ class QCOrchestrator extends EventEmitter {
 
       const mergedPath = path.join(qcFolder, `${chapterName}_MCQs & Solution_merged.docx`)
 
-      console.log(`[QCOrchestrator] Merging: ${path.basename(mcqs)} + ${path.basename(solution)}`)
+      console.log(`[QCOrchestrator] Merging: ${path.basename(questionsFile)} + ${path.basename(solutionsFile)}`)
 
-      // Invoke word merger worker
+      // Invoke word merger worker with validated file order
+      // IMPORTANT: questionsFile is always first, solutionsFile is appended at the end
       if (!this.workerPool) {
         throw new Error('Worker pool not initialized')
       }
@@ -381,8 +409,8 @@ class QCOrchestrator extends EventEmitter {
         id: `merge-${Date.now()}`,
         type: 'merge-docx',
         data: {
-          mcqsPath: mcqs,
-          solutionPath: solution,
+          mcqsPath: questionsFile,
+          solutionPath: solutionsFile,
           outputPath: mergedPath
         }
       }

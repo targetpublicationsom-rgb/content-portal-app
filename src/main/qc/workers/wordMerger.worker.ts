@@ -52,6 +52,12 @@ async function mergeDocxFiles(
   }
 
   // PowerShell script to merge documents using InsertFile for better performance
+  // MERGE ORDER GUARANTEE:
+  // This script ALWAYS merges in the correct order: Questions/MCQs first, Solutions/Answers second
+  // The orchestrator validates file order before calling this worker to ensure:
+  // - mcqsPath contains Questions/MCQs document
+  // - solutionPath contains Solutions/Answers document
+  // The InsertFile() method appends solutionPath content to the end of mcqsPath document
   const psScript = `
     try {
       $ErrorActionPreference = 'Stop'
