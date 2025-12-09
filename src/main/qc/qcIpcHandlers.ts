@@ -14,6 +14,7 @@ import {
 import { getConfig, getQCOutputPaths, saveConfig } from './qcConfig'
 import { testConnection } from './qcExternalService'
 import { getQCWatcher, isQCWatcherActive } from './qcWatcher'
+import { sanitizeYAMLFrontMatter } from './yamlSanitizer'
 import type { QCFilters, QCConfig } from '../../shared/qc.types'
 import type { WorkerMessage } from './workers/types'
 import type { WatchEvent } from './qcWatcher'
@@ -268,6 +269,12 @@ export function registerQCIpcHandlers(): void {
 
       // Convert using Pandoc worker
       console.log('[QC IPC] Converting MD to DOCX on-demand for:', qcId)
+      
+      // Sanitize the markdown file before conversion
+      const mdContent = await fs.readFile(record.report_md_path, 'utf-8')
+      const sanitizedMd = sanitizeYAMLFrontMatter(mdContent)
+      await fs.writeFile(record.report_md_path, sanitizedMd, 'utf-8')
+      
       const workerPool = orchestrator.getWorkerPool()
       if (!workerPool) {
         return { success: false, error: 'Worker pool not available' }

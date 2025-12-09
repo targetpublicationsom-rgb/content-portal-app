@@ -5,6 +5,7 @@ import * as fsSync from 'fs'
 import * as path from 'path'
 import { validateNumbering } from '../numberingChecker'
 import { WorkerPool } from './WorkerPool'
+import { sanitizeYAMLFrontMatter } from './yamlSanitizer'
 import type { WorkerMessage } from './workers/types'
 import { getQCWatcher, startQCWatcher, stopQCWatcher } from './qcWatcher'
 import {
@@ -1332,7 +1333,10 @@ class QCOrchestrator extends EventEmitter {
       await updateQCStatus(record.qc_id, 'DOWNLOADING')
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'DOWNLOADING' })
 
-      await fs.writeFile(paths.reportMdPath, reportMarkdown, 'utf-8')
+      // Sanitize YAML front matter to fix common parsing issues
+      const sanitizedMarkdown = sanitizeYAMLFrontMatter(reportMarkdown)
+
+      await fs.writeFile(paths.reportMdPath, sanitizedMarkdown, 'utf-8')
 
       // Get issues count from API response
       const issuesFound = status.issues_count || 0
