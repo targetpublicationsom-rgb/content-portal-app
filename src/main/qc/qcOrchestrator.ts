@@ -304,10 +304,12 @@ class QCOrchestrator extends EventEmitter {
       const solutionName = path.basename(solution).toLowerCase()
 
       // Detect if files are reversed based on keywords
-      const mcqsHasSolutionKeyword = mcqsName.includes('answer') || mcqsName.includes('solution')
-      const solutionHasQuestionKeyword = solutionName.includes('question') || solutionName.includes('mcq')
+      // Swap if the file marked as "mcqs" is actually a solution file OR
+      // the file marked as "solution" is actually a questions file
+      const mcqsIsActuallySolution = mcqsName.includes('answer') || mcqsName.includes('solution')
+      const solutionIsActuallyQuestions = solutionName.includes('question') || solutionName.includes('mcq')
 
-      if (mcqsHasSolutionKeyword && solutionHasQuestionKeyword) {
+      if (mcqsIsActuallySolution || solutionIsActuallyQuestions) {
         // Files are reversed! Swap them to ensure correct order
         console.log(`[QCOrchestrator] ⚠️ Files detected in reverse order, swapping:`)
         console.log(`[QCOrchestrator]    Questions: ${path.basename(solution)}`)
