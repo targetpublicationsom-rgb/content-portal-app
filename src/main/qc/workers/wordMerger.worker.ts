@@ -52,12 +52,6 @@ async function mergeDocxFiles(
   }
 
   // PowerShell script to merge documents using InsertFile for better performance
-  // MERGE ORDER GUARANTEE:
-  // This script ALWAYS merges in the correct order: Questions/MCQs first, Solutions/Answers second
-  // The orchestrator validates file order before calling this worker to ensure:
-  // - mcqsPath contains Questions/MCQs document
-  // - solutionPath contains Solutions/Answers document
-  // The InsertFile() method appends solutionPath content to the end of mcqsPath document
   const psScript = `
     try {
       $ErrorActionPreference = 'Stop'
@@ -67,27 +61,30 @@ async function mergeDocxFiles(
       $word.Visible = $false
       $word.DisplayAlerts = 0
 
-      Write-Host "[WordMerger] Opening MCQs…"
-      $mcqsDoc = $word.Documents.Open("${absMcqsPath}", $false, $false)
+      Write-Host "[WordMerger] Opening Solution document as base…"
+      $solutionDoc = $word.Documents.Open("${absSolutionPath}", $false, $false)
 
-      Write-Host "[WordMerger] Moving to end & inserting page break…"
-      $range = $mcqsDoc.Content
-      $range.Collapse(1)        # wdCollapseEnd = 1
+      Write-Host "[WordMerger] Moving to START & inserting Questions before…"
+      $range = $solutionDoc.Content
+      $range.Collapse(0)        # wdCollapseStart = 0 (move to beginning)
+      
+      Write-Host "[WordMerger] Inserting Questions document at beginning…"
+      $range.InsertFile("${absMcqsPath}")
+      
+      Write-Host "[WordMerger] Adding page break between sections…"
+      $range.Collapse(1)        # Move to end of inserted content
       $range.InsertBreak(7)     # wdPageBreak = 7
-
-      Write-Host "[WordMerger] Inserting Solution document…"
-      $range.InsertFile("${absSolutionPath}")
 
       Write-Host "[WordMerger] Saving merged document…"
       $wdFormatXMLDocument = 12
-      $mcqsDoc.SaveAs2("${absOutputPath}", $wdFormatXMLDocument)
+      $solutionDoc.SaveAs2("${absOutputPath}", $wdFormatXMLDocument)
 
       Write-Host "[WordMerger] Cleaning up…"
-      $mcqsDoc.Close($false)
+      $solutionDoc.Close($false)
       $word.Quit()
 
       [System.Runtime.InteropServices.Marshal]::ReleaseComObject($range) | Out-Null
-      [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mcqsDoc) | Out-Null
+      [System.Runtime.InteropServices.Marshal]::ReleaseComObject($solutionDoc) | Out-Null
       [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
 
       [GC]::Collect()
