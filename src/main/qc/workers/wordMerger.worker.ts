@@ -62,14 +62,14 @@ async function mergeDocxFiles(
       $word.DisplayAlerts = 0
 
       Write-Host "[WordMerger] Opening Solution document as base…"
-      $solutionDoc = $word.Documents.Open("${absSolutionPath}", $false, $false)
+      $solutionDoc = $word.Documents.Open("${absMcqsPath}", $false, $false)
 
       Write-Host "[WordMerger] Moving to START & inserting Questions before…"
       $range = $solutionDoc.Content
       $range.Collapse(0)        # wdCollapseStart = 0 (move to beginning)
       
       Write-Host "[WordMerger] Inserting Questions document at beginning…"
-      $range.InsertFile("${absMcqsPath}")
+      $range.InsertFile("${absSolutionPath}")
       
       Write-Host "[WordMerger] Adding page break between sections…"
       $range.Collapse(1)        # Move to end of inserted content
