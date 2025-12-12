@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 export default function NumberingChecker(): React.JSX.Element {
   const [questionsPath, setQuestionsPath] = useState('')
   const [solutionsPath, setSolutionsPath] = useState('')
+  const [expectedCount, setExpectedCount] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<NumberingValidationResult | null>(null)
 
@@ -49,7 +50,12 @@ export default function NumberingChecker(): React.JSX.Element {
     setValidationResult(null)
 
     try {
-      const result = await numberingService.validateNumbering(questionsPath, solutionsPath)
+      const expectedCountNum = expectedCount ? parseInt(expectedCount, 10) : undefined
+      const result = await numberingService.validateNumbering(
+        questionsPath,
+        solutionsPath,
+        expectedCountNum
+      )
 
       setValidationResult(result)
 
@@ -67,7 +73,7 @@ export default function NumberingChecker(): React.JSX.Element {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto mb-5">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -129,6 +135,23 @@ export default function NumberingChecker(): React.JSX.Element {
               Browse
             </Button>
           </div>
+        </div>
+
+        {/* Expected Count */}
+        <div className="space-y-2">
+          <Label htmlFor="expected-count">Expected Count (Optional)</Label>
+          <Input
+            id="expected-count"
+            type="number"
+            value={expectedCount}
+            onChange={(e) => setExpectedCount(e.target.value)}
+            placeholder="Enter expected number of questions (e.g., 50)"
+            min="1"
+            disabled={isValidating}
+          />
+          <p className="text-xs text-muted-foreground">
+            If specified, validation will check that both files contain exactly this many items
+          </p>
         </div>
 
         {/* Validate Button */}

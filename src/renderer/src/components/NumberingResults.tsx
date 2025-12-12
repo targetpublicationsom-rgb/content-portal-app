@@ -19,9 +19,9 @@ export default function NumberingResults({ result }: NumberingResultsProps): Rea
         }`}
       >
         {isPassed ? (
-          <CheckCircle2 className="h-6 w-6 flex-shrink-0" />
+          <CheckCircle2 className="h-6 w-6 shrink-0" />
         ) : (
-          <XCircle className="h-6 w-6 flex-shrink-0" />
+          <XCircle className="h-6 w-6 shrink-0" />
         )}
         <div>
           <h3 className="font-bold text-lg">
@@ -47,6 +47,30 @@ export default function NumberingResults({ result }: NumberingResultsProps): Rea
                 {result.summary.questions.count}
               </span>
             </div>
+            {result.summary.questions.expected > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Expected:</span>
+                <span className="font-semibold text-muted-foreground">
+                  {result.summary.questions.expected}
+                </span>
+              </div>
+            )}
+            {result.summary.questions.expected > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Match:</span>
+                <span
+                  className={`font-semibold ${
+                    result.summary.questions.count === result.summary.questions.expected
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {result.summary.questions.count === result.summary.questions.expected
+                    ? '✓ Match'
+                    : '✗ Mismatch'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -60,6 +84,30 @@ export default function NumberingResults({ result }: NumberingResultsProps): Rea
                 {result.summary.solutions.count}
               </span>
             </div>
+            {result.summary.solutions.expected > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Expected:</span>
+                <span className="font-semibold text-muted-foreground">
+                  {result.summary.solutions.expected}
+                </span>
+              </div>
+            )}
+            {result.summary.solutions.expected > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Match:</span>
+                <span
+                  className={`font-semibold ${
+                    result.summary.solutions.count === result.summary.solutions.expected
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}
+                >
+                  {result.summary.solutions.count === result.summary.solutions.expected
+                    ? '✓ Match'
+                    : '✗ Mismatch'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -68,7 +116,7 @@ export default function NumberingResults({ result }: NumberingResultsProps): Rea
       {result.issues.length > 0 && (
         <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
           <div className="flex items-start gap-2 mb-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
             <h4 className="font-semibold text-amber-900">Issues Detected</h4>
           </div>
           <ul className="space-y-2 ml-7">
