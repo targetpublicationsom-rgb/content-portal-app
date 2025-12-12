@@ -29,6 +29,7 @@ import {
   getRecordByFilePath,
   getRecordByFolderAndType,
   getQCRecord,
+  getQCRecords,
   updateQCRecord,
   closeQCDatabase,
   reinitializeQCDatabase
@@ -137,6 +138,14 @@ class QCOrchestrator extends EventEmitter {
       // Start polling for processing records
       this.startStatusPolling()
 
+      // Process any recovered jobs now that worker pool is ready
+      if (this.jobQueue.length > 0) {
+        console.log(
+          `[QCOrchestrator] Processing ${this.jobQueue.length} recovered jobs from queue`
+        )
+        this.processQueue()
+      }
+
       // Note: Watcher will be started manually via qc:start-watcher IPC call
       console.log(
         '[QCOrchestrator] Initialized - watcher will start when user clicks Start Watching'
@@ -165,6 +174,12 @@ class QCOrchestrator extends EventEmitter {
       this.batchTimeoutTimer = null
     }
 
+    // Clear processing state
+    this.processingFiles.clear()
+    this.jobQueue = []
+    this.convertedPdfBatch = []
+    console.log('[QCOrchestrator] Cleared processing state')
+
     // Stop watcher
     stopQCWatcher()
 
@@ -183,15 +198,13 @@ class QCOrchestrator extends EventEmitter {
 
   private async recoverConvertedRecords(): Promise<void> {
     try {
-      console.log('[QCOrchestrator] Recovering CONVERTED records from previous session...')
+      console.log('[QCOrchestrator] Recovering interrupted records from previous session...')
 
-      // Query all CONVERTED records (PDFs successfully created, pending batch submission)
+      // Recover CONVERTED records (PDFs ready for batching)
       const convertedRecords = await getConvertedRecords()
 
-      if (convertedRecords.length === 0) {
-        console.log('[QCOrchestrator] No CONVERTED records found to recover')
-      } else {
-        console.log(`[QCOrchestrator] Recovered ${convertedRecords.length} CONVERTED records`)
+      if (convertedRecords.length > 0) {
+        console.log(`[QCOrchestrator] Found ${convertedRecords.length} CONVERTED records to recover`)
 
         // Add recovered records to batch queue (with deduplication)
         for (const record of convertedRecords) {
@@ -230,10 +243,101 @@ class QCOrchestrator extends EventEmitter {
           this.startBatchTimeout()
         }
       }
+
+      // Recover stuck intermediate states (VALIDATING, MERGING, CONVERTING, SUBMITTING)
+      // These are states where the file was being processed when app closed
+      const stuckRecords = await this.getStuckIntermediateRecords()
+      
+      if (stuckRecords.length > 0) {
+        console.log(
+          `[QCOrchestrator] Found ${stuckRecords.length} records stuck in intermediate states, resetting and re-enqueueing`
+        )
+
+        for (const record of stuckRecords) {
+          console.log(
+            `[QCOrchestrator] Resetting ${record.original_name} from ${record.status} to QUEUED`
+          )
+          
+          // Reset to QUEUED
+          await updateQCRecord(record.qc_id, {
+            status: 'QUEUED',
+            error_message: `Interrupted during ${record.status} - restarting from beginning`
+          })
+
+          this.emitToRenderer('qc:status-update', {
+            qcId: record.qc_id,
+            status: 'QUEUED',
+            message: 'Recovered from interrupted state'
+          })
+
+          // Enqueue the job for processing (watcher won't detect existing files)
+          console.log(`[QCOrchestrator] Enqueueing recovered job: ${record.original_name}`)
+          await this.enqueueJob(
+            record.file_path,
+            record.original_name,
+            false,
+            undefined,
+            record.qc_id
+          )
+        }
+
+        console.log('[QCOrchestrator] All stuck intermediate records reset and re-enqueued')
+      } else {
+        console.log('[QCOrchestrator] No stuck intermediate records found')
+      }
+
+      // Recover QUEUED records (files that were queued but not processed before app closed)
+      const queuedRecords = await getQCRecords({ status: 'QUEUED' }, 1000, 0)
+      
+      if (queuedRecords.length > 0) {
+        console.log(
+          `[QCOrchestrator] Found ${queuedRecords.length} QUEUED records, re-enqueueing for processing`
+        )
+
+        for (const record of queuedRecords) {
+          console.log(`[QCOrchestrator] Re-enqueueing QUEUED job: ${record.original_name}`)
+          
+          // Enqueue the job for processing
+          await this.enqueueJob(
+            record.file_path,
+            record.original_name,
+            false,
+            undefined,
+            record.qc_id
+          )
+        }
+
+        console.log('[QCOrchestrator] All QUEUED records re-enqueued')
+      } else {
+        console.log('[QCOrchestrator] No QUEUED records found')
+      }
+
+      // Note: Don't call processQueue() here - worker pool not initialized yet
+      // Queue will be processed after initialization completes
+
+      if (convertedRecords.length === 0 && stuckRecords.length === 0 && queuedRecords.length === 0) {
+        console.log('[QCOrchestrator] No records to recover')
+      }
     } catch (error) {
-      console.error('[QCOrchestrator] Error recovering CONVERTED records:', error)
+      console.error('[QCOrchestrator] Error recovering records:', error)
       // Don't throw - let app continue even if recovery fails
     }
+  }
+
+  private async getStuckIntermediateRecords(): Promise<QCRecord[]> {
+    // Get records stuck in intermediate processing states
+    // These indicate the app was closed during active processing
+    const stuckStates: Array<
+      'VALIDATING' | 'MERGING' | 'CONVERTING' | 'SUBMITTING'
+    > = ['VALIDATING', 'MERGING', 'CONVERTING', 'SUBMITTING']
+    
+    const allRecords: QCRecord[] = []
+    for (const status of stuckStates) {
+      const records = await getQCRecords({ status }, 1000, 0)
+      allRecords.push(...records)
+    }
+    
+    return allRecords
   }
 
   private async reconcileCompletedBatches(): Promise<void> {
@@ -1303,25 +1407,36 @@ class QCOrchestrator extends EventEmitter {
       // Handle 503 Service Unavailable - similar recovery
       if (error instanceof ServiceUnavailableError) {
         console.warn(
-          `[QCOrchestrator] Batch ${batchId} got 503 Service Unavailable - marking for verification`
+          `[QCOrchestrator] Batch ${batchId} got 503 Service Unavailable - cleaning up and marking for verification`
         )
 
+        // Clean up ZIP file before retrying
+        try {
+          if (fsSync.existsSync(zipPath)) {
+            await fs.unlink(zipPath)
+            console.log(`[QCOrchestrator] Cleaned up ZIP file for batch ${batchId}`)
+          }
+        } catch (cleanupError) {
+          console.error(`[QCOrchestrator] Failed to cleanup ZIP file:`, cleanupError)
+        }
+
+        // Set records back to CONVERTED for re-batching
         for (const file of batchFiles) {
           await updateQCStatus(
             file.qcId,
-            'PENDING_VERIFICATION',
-            'Service temporarily unavailable - will retry'
+            'CONVERTED',
+            'Service temporarily unavailable - will retry batch submission'
           )
           this.emitToRenderer('qc:status-update', {
             qcId: file.qcId,
-            status: 'PENDING_VERIFICATION',
+            status: 'CONVERTED',
             message: 'Service temporarily unavailable - retrying...'
           })
         }
 
         this.emitToRenderer('qc:batch-recovery', {
           batchId,
-          status: 'PENDING_VERIFICATION',
+          status: 'CONVERTED',
           fileCount: batchFiles.length,
           message: 'Service unavailable - will retry batch submission'
         })
@@ -1347,7 +1462,19 @@ class QCOrchestrator extends EventEmitter {
         throw error
       }
 
-      // All other errors - mark as FAILED
+      // All other errors - clean up ZIP and mark as FAILED
+      console.error(`[QCOrchestrator] Batch ${batchId} submission failed with unhandled error`)
+      
+      // Clean up ZIP file
+      try {
+        if (fsSync.existsSync(zipPath)) {
+          await fs.unlink(zipPath)
+          console.log(`[QCOrchestrator] Cleaned up ZIP file for failed batch ${batchId}`)
+        }
+      } catch (cleanupError) {
+        console.error(`[QCOrchestrator] Failed to cleanup ZIP file:`, cleanupError)
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error)
       for (const file of batchFiles) {
         await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${errorMessage}`)
