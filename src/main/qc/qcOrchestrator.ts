@@ -543,9 +543,9 @@ class QCOrchestrator extends EventEmitter {
           return
         }
         // Skip if failed (user must manually retry)
-        if (existingRecord.status === 'FAILED') {
+        if (['FAILED', 'NUMBERING_FAILED', 'CONVERSION_FAILED'].includes(existingRecord.status)) {
           console.log(
-            `[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${chapterName} (${fileType})`
+            `[QCOrchestrator] Skipping - ${existingRecord.status} (use retry button to retry): ${chapterName} (${fileType})`
           )
           return
         }
@@ -826,8 +826,8 @@ class QCOrchestrator extends EventEmitter {
           return
         }
         // Skip if failed (user must manually retry)
-        if (existingRecord.status === 'FAILED') {
-          console.log(`[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${filename}`)
+        if (['FAILED', 'NUMBERING_FAILED', 'CONVERSION_FAILED'].includes(existingRecord.status)) {
+          console.log(`[QCOrchestrator] Skipping - ${existingRecord.status} (use retry button to retry): ${filename}`)
           return
         }
         // Skip if currently being processed
