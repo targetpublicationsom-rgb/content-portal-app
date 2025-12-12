@@ -41,7 +41,7 @@ import {
 } from './qcNotifications'
 import { acquireLock, releaseLock, checkLock, cleanStaleLocks } from './qcLockManager'
 import type { WatchEvent } from './qcWatcher'
-import type { QCRecord, BatchManifest, BatchStatus } from '../../shared/qc.types'
+import type { QCRecord, BatchManifest } from '../../shared/qc.types'
 import AdmZip from 'adm-zip'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -159,6 +159,12 @@ class QCOrchestrator extends EventEmitter {
       this.pollingInterval = null
     }
 
+    // Clear batch timeout timer
+    if (this.batchTimeoutTimer) {
+      clearTimeout(this.batchTimeoutTimer)
+      this.batchTimeoutTimer = null
+    }
+
     // Stop watcher
     stopQCWatcher()
 
@@ -187,11 +193,20 @@ class QCOrchestrator extends EventEmitter {
       } else {
         console.log(`[QCOrchestrator] Recovered ${convertedRecords.length} CONVERTED records`)
 
-        // Add recovered records to batch queue
+        // Add recovered records to batch queue (with deduplication)
         for (const record of convertedRecords) {
           if (!record.pdf_path) {
             console.warn(
               `[QCOrchestrator] Recovered CONVERTED record ${record.qc_id} missing pdf_path, skipping`
+            )
+            continue
+          }
+
+          // Check for duplicates - prevent same qcId from being added twice
+          const alreadyInBatch = this.convertedPdfBatch.some((item) => item.qcId === record.qc_id)
+          if (alreadyInBatch) {
+            console.log(
+              `[QCOrchestrator] ${record.original_name} already in batch, skipping duplicate`
             )
             continue
           }
@@ -277,19 +292,59 @@ class QCOrchestrator extends EventEmitter {
           )
 
           for (const record of stuckRecords) {
-            // Try to fetch final status if we have job_id
+            // First, check if job status is available in batch response
             if (record.external_qc_id) {
+              const jobInBatch = batchStatus.jobs.find((j) => j.job_id === record.external_qc_id)
+
+              if (jobInBatch) {
+                console.log(
+                  `[QCOrchestrator] Found job status in batch response for ${record.qc_id}: ${jobInBatch.status}`
+                )
+
+                // Handle based on job status from batch response
+                if (jobInBatch.status === 'COMPLETED') {
+                  await this.handleQCComplete(record, {
+                    job_id: jobInBatch.job_id,
+                    status: 'COMPLETED',
+                    result: jobInBatch.result || '',
+                    issues_count: jobInBatch.issue_count || jobInBatch.issues_count || 0,
+                    created_at: batchStatus.submitted_at,
+                    updated_at: batchStatus.updated_at
+                  })
+                  console.log(
+                    `[QCOrchestrator] Reconciled stuck record ${record.qc_id} as COMPLETED`
+                  )
+                  continue
+                } else if (jobInBatch.status === 'FAILED') {
+                  await updateQCStatus(
+                    record.qc_id,
+                    'FAILED',
+                    jobInBatch.error || 'QC processing failed'
+                  )
+                  notifyQCFailed(record.original_name, jobInBatch.error || 'QC processing failed')
+                  this.emitToRenderer('qc:status-update', {
+                    qcId: record.qc_id,
+                    status: 'FAILED',
+                    error: jobInBatch.error,
+                    batchId: batch.batch_id
+                  })
+                  console.log(`[QCOrchestrator] Reconciled stuck record ${record.qc_id} as FAILED`)
+                  continue
+                }
+              }
+
+              // If not in batch response, try individual status check
               try {
                 await this.checkQCStatus(record)
-                console.log(`[QCOrchestrator] Reconciled stuck record ${record.qc_id}`)
+                console.log(`[QCOrchestrator] Reconciled stuck record ${record.qc_id} via individual status check`)
                 continue
               } catch (err) {
-                console.warn(`[QCOrchestrator] Could not fetch status for ${record.qc_id}:`, err)
+                console.warn(`[QCOrchestrator] Could not fetch individual status for ${record.qc_id}:`, err)
               }
             }
 
             // Fallback: mark as FAILED to clear stuck state
-            console.log(`[QCOrchestrator] Marking stuck record ${record.qc_id} as FAILED`)
+            console.log(`[QCOrchestrator] Marking stuck record ${record.qc_id} as FAILED (status unavailable)`)
             await updateQCStatus(
               record.qc_id,
               'FAILED',
@@ -928,7 +983,6 @@ class QCOrchestrator extends EventEmitter {
     pdfPath: string,
     filename: string
   ): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const service = getQCExternalService()
 
     if (!service.isConfigured()) {
@@ -958,6 +1012,13 @@ class QCOrchestrator extends EventEmitter {
     folderPath: string | null,
     fileType: string | null
   ): Promise<void> {
+    // Check for duplicates - prevent same qcId from being added twice
+    const alreadyInBatch = this.convertedPdfBatch.some((item) => item.qcId === qcId)
+    if (alreadyInBatch) {
+      console.log(`[QCOrchestrator] ${filename} already in batch, skipping duplicate`)
+      return
+    }
+
     console.log(
       `[QCOrchestrator] Adding ${filename} to batch (current size: ${this.convertedPdfBatch.length})`
     )
@@ -984,9 +1045,15 @@ class QCOrchestrator extends EventEmitter {
     const config = getConfig()
     const timeoutMs = (config.batchTimeoutSeconds || 30) * 1000
 
-    // Clear existing timer
+    // Clear existing timer to prevent race conditions
     if (this.batchTimeoutTimer) {
       clearTimeout(this.batchTimeoutTimer)
+      this.batchTimeoutTimer = null
+    }
+
+    // Don't start new timer if batch is already being processed
+    if (this.isBatchProcessing) {
+      return
     }
 
     this.batchTimeoutTimer = setTimeout(async () => {
@@ -1037,10 +1104,29 @@ class QCOrchestrator extends EventEmitter {
         `[QCOrchestrator] Submitting batch (trigger: ${trigger}, files: ${batchFiles.length})`
       )
       await this.submitBatch(batchFiles)
+      // Success - files are now submitted, don't re-add them
     } catch (error) {
       console.error('[QCOrchestrator] Error submitting batch:', error)
-      // Re-add files to batch on error
-      this.convertedPdfBatch.unshift(...batchFiles)
+      // Only re-add files if they haven't been persisted to database with batch_id
+      // Check which files failed to get batch_id assigned
+      const failedFiles: Array<{
+        qcId: string
+        pdfPath: string
+        filename: string
+        originalName: string
+        folderPath: string | null
+        fileType: string | null
+      }> = []
+      for (const file of batchFiles) {
+        const record = await getQCRecord(file.qcId)
+        if (!record?.batch_id) {
+          failedFiles.push(file)
+        }
+      }
+      if (failedFiles.length > 0) {
+        console.log(`[QCOrchestrator] Re-adding ${failedFiles.length} failed files to batch`)
+        this.convertedPdfBatch.unshift(...failedFiles)
+      }
     } finally {
       this.isBatchProcessing = false
     }
@@ -1071,7 +1157,24 @@ class QCOrchestrator extends EventEmitter {
 
       // Step 2: Create ZIP file
       console.log(`[QCOrchestrator] Creating ZIP for batch ${batchId}...`)
-      await this.createBatchZip(batchId, batchFiles, zipPath)
+      try {
+        await this.createBatchZip(batchId, batchFiles, zipPath)
+      } catch (zipError) {
+        console.error(`[QCOrchestrator] Failed to create ZIP for batch ${batchId}:`, zipError)
+        // Rollback: Set records back to CONVERTED so they can be re-batched
+        for (const file of batchFiles) {
+          await updateQCStatus(
+            file.qcId,
+            'CONVERTED',
+            `ZIP creation failed: ${zipError instanceof Error ? zipError.message : String(zipError)}`
+          )
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'CONVERTED'
+          })
+        }
+        throw zipError
+      }
 
       // Get ZIP file size
       const stats = await fs.stat(zipPath)
@@ -1442,12 +1545,12 @@ class QCOrchestrator extends EventEmitter {
         const record = await getQCRecordByExternalId(job.job_id)
         if (!record) continue
 
-        if (job.status === 'COMPLETED' && job.result) {
+        if (job.status === 'COMPLETED') {
           // Handle completion - use issue_count from job response
           await this.handleQCComplete(record, {
             job_id: job.job_id,
             status: 'COMPLETED',
-            result: job.result,
+            result: job.result || '',
             issues_count: job.issue_count || job.issues_count || 0, // API returns issue_count
             created_at: batchStatus.submitted_at,
             updated_at: batchStatus.updated_at
@@ -1496,8 +1599,50 @@ class QCOrchestrator extends EventEmitter {
         }
 
         for (const record of stuckRecords) {
-          // If we have a job id, try to fetch final status directly
+          // First check if job status is in the batch response we already fetched
           if (record.external_qc_id) {
+            const jobInBatch = batchStatus.jobs.find((j) => j.job_id === record.external_qc_id)
+
+            if (jobInBatch) {
+              console.log(
+                `[QCOrchestrator] Found job ${record.external_qc_id} in batch response: ${jobInBatch.status}`
+              )
+
+              // Process based on job status
+              if (jobInBatch.status === 'COMPLETED') {
+                await this.handleQCComplete(record, {
+                  job_id: jobInBatch.job_id,
+                  status: 'COMPLETED',
+                  result: jobInBatch.result || '',
+                  issues_count: jobInBatch.issue_count || jobInBatch.issues_count || 0,
+                  created_at: batchStatus.submitted_at,
+                  updated_at: batchStatus.updated_at
+                })
+                console.log(
+                  `[QCOrchestrator] Reconciled record ${record.qc_id} as COMPLETED from batch response`
+                )
+                continue
+              } else if (jobInBatch.status === 'FAILED') {
+                await updateQCStatus(
+                  record.qc_id,
+                  'FAILED',
+                  jobInBatch.error || 'QC processing failed'
+                )
+                notifyQCFailed(record.original_name, jobInBatch.error || 'QC processing failed')
+                this.emitToRenderer('qc:status-update', {
+                  qcId: record.qc_id,
+                  status: 'FAILED',
+                  error: jobInBatch.error,
+                  batchId: batchId
+                })
+                console.log(
+                  `[QCOrchestrator] Reconciled record ${record.qc_id} as FAILED from batch response`
+                )
+                continue
+              }
+            }
+
+            // If not in batch response, try individual API call
             try {
               await this.checkQCStatus(record)
               console.log(
@@ -1542,11 +1687,22 @@ class QCOrchestrator extends EventEmitter {
 
     try {
       const service = getQCExternalService()
+      console.log(
+        `[QCOrchestrator] Fetching individual job status for ${record.qc_id} (job_id: ${record.external_qc_id})`
+      )
       const status = await service.getQCStatus(record.external_qc_id)
+      console.log(
+        `[QCOrchestrator] Individual job status response for ${record.qc_id}:`,
+        JSON.stringify(status, null, 2)
+      )
 
-      if (status.status === 'COMPLETED' && status.result) {
+      if (status.status === 'COMPLETED') {
+        console.log(
+          `[QCOrchestrator] Job ${record.external_qc_id} completed (result length: ${status.result?.length || 0}), handling completion...`
+        )
         await this.handleQCComplete(record, status)
       } else if (status.status === 'FAILED') {
+        console.log(`[QCOrchestrator] Job ${record.external_qc_id} failed`)
         // Individual record failure - no auto-retry, awaits manual user action
         await updateQCStatus(record.qc_id, 'FAILED', 'QC processing failed')
         notifyQCFailed(record.original_name, 'QC processing failed')
@@ -1555,6 +1711,10 @@ class QCOrchestrator extends EventEmitter {
           status: 'FAILED',
           error: 'QC processing failed'
         })
+      } else {
+        console.log(
+          `[QCOrchestrator] Job ${record.external_qc_id} still processing (status: ${status.status})`
+        )
       }
     } catch (error) {
       console.error(`[QCOrchestrator] Error checking status for ${record.qc_id}:`, error)
@@ -1568,10 +1728,7 @@ class QCOrchestrator extends EventEmitter {
 
   private async handleQCComplete(record: QCRecord, status: QCStatusResponse): Promise<void> {
     try {
-      const reportMarkdown = status.result
-      if (!reportMarkdown) {
-        throw new Error('No report data in completed status')
-      }
+      const reportMarkdown = status.result || ''
 
       const paths = getQCOutputPaths(record.qc_id, record.original_name)
 
@@ -1580,7 +1737,10 @@ class QCOrchestrator extends EventEmitter {
       this.emitToRenderer('qc:status-update', { qcId: record.qc_id, status: 'DOWNLOADING' })
 
       // Sanitize YAML front matter to fix common parsing issues
-      const sanitizedMarkdown = sanitizeYAMLFrontMatter(reportMarkdown)
+      // If result is empty, create a minimal report
+      const sanitizedMarkdown = reportMarkdown
+        ? sanitizeYAMLFrontMatter(reportMarkdown)
+        : '# QC Report\n\nNo issues found.'
 
       await fs.writeFile(paths.reportMdPath, sanitizedMarkdown, 'utf-8')
 
@@ -1703,44 +1863,85 @@ class QCOrchestrator extends EventEmitter {
       `[QCOrchestrator] Found ${failedRecords.length} failed records to retry in batch ${batchId}`
     )
 
-    // Retry each failed record individually (this clears their batch_id)
-    for (const record of failedRecords) {
-      await this.retryRecord(record.qc_id)
+    // SUBSET BATCH APPROACH: Create new batch with only failed PDFs
+    // These records are already CONVERTED and have PDFs - just need API resubmission
+
+    try {
+      // Verify all failed records have PDFs
+      const batchFiles: Array<{
+        qcId: string
+        pdfPath: string
+        filename: string
+        originalName: string
+        folderPath: string | null
+        fileType: string | null
+      }> = []
+
+      for (const record of failedRecords) {
+        if (!record.pdf_path) {
+          console.warn(
+            `[QCOrchestrator] Failed record ${record.qc_id} missing pdf_path, skipping retry`
+          )
+          continue
+        }
+
+        batchFiles.push({
+          qcId: record.qc_id,
+          pdfPath: record.pdf_path,
+          filename: record.original_name,
+          originalName: record.original_name,
+          folderPath: record.folder_path,
+          fileType: record.file_type
+        })
+      }
+
+      if (batchFiles.length === 0) {
+        console.error(`[QCOrchestrator] No valid PDFs found for failed records in batch ${batchId}`)
+        return
+      }
+
+      console.log(
+        `[QCOrchestrator] Creating subset batch with ${batchFiles.length} failed PDFs from batch ${batchId}`
+      )
+
+      // Update failed records: clear external_qc_id, keep CONVERTED status temporarily
+      for (const file of batchFiles) {
+        await updateQCRecord(file.qcId, {
+          external_qc_id: null,
+          error_message: null,
+          retry_count: ((await getQCRecord(file.qcId))?.retry_count || 0) + 1
+        })
+      }
+
+      // Submit new batch using existing submitBatch logic (which will create new batch_id)
+      await this.submitBatch(batchFiles)
+
+      // Update original batch status to PARTIAL_COMPLETE
+      const remainingRecords = await getRecordsByBatchId(batchId)
+      const completedCount = remainingRecords.filter((r) => r.status === 'COMPLETED').length
+      const failedCount = 0 // All failed records now moved to new batch
+      const processingCount = remainingRecords.filter(
+        (r) => r.status === 'PROCESSING' || r.status === 'DOWNLOADING'
+      ).length
+
+      await updateBatchStatus(
+        batchId,
+        completedCount > 0 ? 'PARTIAL_COMPLETE' : 'COMPLETED',
+        completedCount,
+        failedCount,
+        processingCount
+      )
+
+      console.log(
+        `[QCOrchestrator] Subset batch created and submitted with ${batchFiles.length} files`
+      )
+      console.log(
+        `[QCOrchestrator] Original batch ${batchId} marked as PARTIAL_COMPLETE (${completedCount} completed)`
+      )
+    } catch (error) {
+      console.error(`[QCOrchestrator] Failed to create subset batch for ${batchId}:`, error)
+      throw error
     }
-
-    // After retrying, get remaining records still in this batch
-    const remainingRecords = await getRecordsByBatchId(batchId)
-    const completedCount = remainingRecords.filter((r) => r.status === 'COMPLETED').length
-    const failedCount = remainingRecords.filter((r) => r.status === 'FAILED').length
-    const processingCount = remainingRecords.filter(
-      (r) => r.status === 'PROCESSING' || r.status === 'DOWNLOADING'
-    ).length
-
-    // Update batch status based on remaining records
-    let newStatus: BatchStatus
-    if (remainingRecords.length === 0) {
-      // All records were retried and removed from batch
-      newStatus = 'COMPLETED'
-    } else if (failedCount === 0 && processingCount === 0) {
-      // Only completed records remain
-      newStatus = 'COMPLETED'
-    } else if (failedCount > 0 && processingCount === 0) {
-      // Still has failed records
-      newStatus = 'FAILED'
-    } else if (completedCount > 0 && (failedCount > 0 || processingCount > 0)) {
-      // Mixed results
-      newStatus = 'PARTIAL_COMPLETE'
-    } else {
-      // Still processing
-      newStatus = 'PROCESSING'
-    }
-
-    await updateBatchStatus(batchId, newStatus, completedCount, failedCount, processingCount)
-
-    console.log(
-      `[QCOrchestrator] Batch ${batchId} updated: ${remainingRecords.length} records remaining, status: ${newStatus}`
-    )
-    console.log(`[QCOrchestrator] Batch retry complete: ${failedRecords.length} files re-queued`)
   }
 
   setMaxConcurrentJobs(count: number): void {
