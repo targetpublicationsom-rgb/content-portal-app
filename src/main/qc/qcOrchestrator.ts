@@ -51,7 +51,8 @@ import {
   getProcessingBatches,
   getQCRecordByExternalId,
   recordBatchHistory,
-  getRecordsByBatchId
+  getRecordsByBatchId,
+  getQCBatches
 } from './qcStateManager'
 import { getBatchZipPath } from './qcConfig'
 
@@ -71,7 +72,7 @@ class QCOrchestrator extends EventEmitter {
   private isProcessingQueue = false
   private workerPool: WorkerPool | null = null
   private processingFiles: Set<string> = new Set() // Track files currently being processed
-  
+
   // Batch processing properties
   private convertedPdfBatch: Array<{
     qcId: string
@@ -99,11 +100,11 @@ class QCOrchestrator extends EventEmitter {
 
       // Initialize all modules
       await initializeQCDatabase()
-      
+
       // Recover CONVERTED records from previous session
       // (PDFs that were successfully created but not yet batched when app closed)
       await this.recoverConvertedRecords()
-      
+
       initializeQCNotifications(mainWindow)
 
       // Initialize worker pool for heavy operations
@@ -130,11 +131,16 @@ class QCOrchestrator extends EventEmitter {
         console.log('[QCOrchestrator] External QC service configured')
       }
 
+      // Reconcile stuck records AFTER API is configured
+      await this.reconcileCompletedBatches()
+
       // Start polling for processing records
       this.startStatusPolling()
 
       // Note: Watcher will be started manually via qc:start-watcher IPC call
-      console.log('[QCOrchestrator] Initialized - watcher will start when user clicks Start Watching')
+      console.log(
+        '[QCOrchestrator] Initialized - watcher will start when user clicks Start Watching'
+      )
 
       this.isInitialized = true
       console.log('[QCOrchestrator] Initialized successfully')
@@ -172,43 +178,138 @@ class QCOrchestrator extends EventEmitter {
   private async recoverConvertedRecords(): Promise<void> {
     try {
       console.log('[QCOrchestrator] Recovering CONVERTED records from previous session...')
-      
+
       // Query all CONVERTED records (PDFs successfully created, pending batch submission)
       const convertedRecords = await getConvertedRecords()
 
       if (convertedRecords.length === 0) {
         console.log('[QCOrchestrator] No CONVERTED records found to recover')
-        return
-      }
+      } else {
+        console.log(`[QCOrchestrator] Recovered ${convertedRecords.length} CONVERTED records`)
 
-      console.log(`[QCOrchestrator] Recovered ${convertedRecords.length} CONVERTED records`)
+        // Add recovered records to batch queue
+        for (const record of convertedRecords) {
+          if (!record.pdf_path) {
+            console.warn(
+              `[QCOrchestrator] Recovered CONVERTED record ${record.qc_id} missing pdf_path, skipping`
+            )
+            continue
+          }
 
-      // Add recovered records to batch queue
-      for (const record of convertedRecords) {
-        if (!record.pdf_path) {
-          console.warn(`[QCOrchestrator] Recovered CONVERTED record ${record.qc_id} missing pdf_path, skipping`)
-          continue
+          console.log(`[QCOrchestrator] Re-queueing for batch: ${record.original_name}`)
+          this.convertedPdfBatch.push({
+            qcId: record.qc_id,
+            pdfPath: record.pdf_path,
+            filename: record.original_name,
+            originalName: record.original_name,
+            folderPath: record.folder_path,
+            fileType: record.file_type
+          })
         }
 
-        console.log(`[QCOrchestrator] Re-queueing for batch: ${record.original_name}`)
-        this.convertedPdfBatch.push({
-          qcId: record.qc_id,
-          pdfPath: record.pdf_path,
-          filename: record.original_name,
-          originalName: record.original_name,
-          folderPath: record.folder_path,
-          fileType: record.file_type
-        })
-      }
-
-      // Start batch timeout for recovery
-      if (this.convertedPdfBatch.length > 0) {
-        console.log(`[QCOrchestrator] Starting batch timeout for recovered files (${this.convertedPdfBatch.length} files)`)
-        this.startBatchTimeout()
+        // Start batch timeout for recovery
+        if (this.convertedPdfBatch.length > 0) {
+          console.log(
+            `[QCOrchestrator] Starting batch timeout for recovered files (${this.convertedPdfBatch.length} files)`
+          )
+          this.startBatchTimeout()
+        }
       }
     } catch (error) {
       console.error('[QCOrchestrator] Error recovering CONVERTED records:', error)
       // Don't throw - let app continue even if recovery fails
+    }
+  }
+
+  private async reconcileCompletedBatches(): Promise<void> {
+    try {
+      console.log('[QCOrchestrator] Checking for stuck records in completed batches...')
+
+      // Get all batches that might need reconciliation (not just locally completed ones)
+      const allBatches = await getQCBatches([
+        'SUBMITTED',
+        'PROCESSING',
+        'COMPLETED',
+        'PARTIAL_COMPLETE',
+        'FAILED'
+      ])
+
+      for (const batch of allBatches) {
+        try {
+          // Check backend status for this batch
+          const service = getQCExternalService()
+          if (!service.isConfigured()) {
+            console.warn(
+              `[QCOrchestrator] Skipping batch ${batch.batch_id} - API service not configured yet`
+            )
+            continue
+          }
+
+          const batchStatus = await service.getQCBatchStatus(batch.batch_id)
+
+          // Update local batch record with backend status
+          await updateBatchStatus(
+            batch.batch_id,
+            batchStatus.status,
+            batchStatus.completed_count,
+            batchStatus.failed_count,
+            batchStatus.processing_count
+          )
+
+          console.log(
+            `[QCOrchestrator] Reconciled batch ${batch.batch_id}: backend status is ${batchStatus.status}`
+          )
+
+          // Only reconcile stuck records if batch is terminal on backend
+          if (!['COMPLETED', 'PARTIAL_COMPLETE', 'FAILED'].includes(batchStatus.status)) {
+            continue
+          }
+
+          const batchRecords = await getRecordsByBatchId(batch.batch_id)
+          const stuckRecords = batchRecords.filter((r) =>
+            ['PROCESSING', 'DOWNLOADING', 'PENDING_VERIFICATION', 'SUBMITTING'].includes(r.status)
+          )
+
+          if (stuckRecords.length === 0) continue
+
+          console.log(
+            `[QCOrchestrator] Found ${stuckRecords.length} stuck records in ${batchStatus.status} batch ${batch.batch_id}`
+          )
+
+          for (const record of stuckRecords) {
+            // Try to fetch final status if we have job_id
+            if (record.external_qc_id) {
+              try {
+                await this.checkQCStatus(record)
+                console.log(`[QCOrchestrator] Reconciled stuck record ${record.qc_id}`)
+                continue
+              } catch (err) {
+                console.warn(`[QCOrchestrator] Could not fetch status for ${record.qc_id}:`, err)
+              }
+            }
+
+            // Fallback: mark as FAILED to clear stuck state
+            console.log(`[QCOrchestrator] Marking stuck record ${record.qc_id} as FAILED`)
+            await updateQCStatus(
+              record.qc_id,
+              'FAILED',
+              'Batch completed but record status unavailable'
+            )
+            notifyQCFailed(record.original_name, 'Batch completed but record status unavailable')
+            this.emitToRenderer('qc:status-update', {
+              qcId: record.qc_id,
+              status: 'FAILED',
+              error: 'Batch completed but record status unavailable',
+              batchId: batch.batch_id
+            })
+          }
+        } catch (error) {
+          console.error(`[QCOrchestrator] Error reconciling batch ${batch.batch_id}:`, error)
+          // Continue with next batch even if one fails
+        }
+      }
+    } catch (error) {
+      console.error('[QCOrchestrator] Error reconciling completed batches:', error)
     }
   }
 
@@ -276,13 +377,38 @@ class QCOrchestrator extends EventEmitter {
     // Check if already processed (skip if not a retry)
     if (!existingQcId) {
       const existingRecord = await getRecordByFolderAndType(folderPath, fileType!)
-      if (existingRecord && existingRecord.status === 'COMPLETED') {
-        console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
-        return
-      }
-      if (existingRecord && existingRecord.status === 'FAILED') {
-        console.log(`[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${chapterName} (${fileType})`)
-        return
+      if (existingRecord) {
+        // Skip if already completed
+        if (existingRecord.status === 'COMPLETED') {
+          console.log(`[QCOrchestrator] Skipping - already completed: ${chapterName} (${fileType})`)
+          return
+        }
+        // Skip if failed (user must manually retry)
+        if (existingRecord.status === 'FAILED') {
+          console.log(
+            `[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${chapterName} (${fileType})`
+          )
+          return
+        }
+        // Skip if currently being processed
+        if (
+          [
+            'QUEUED',
+            'VALIDATING',
+            'MERGING',
+            'CONVERTING',
+            'CONVERTED',
+            'SUBMITTING',
+            'PROCESSING',
+            'DOWNLOADING',
+            'PENDING_VERIFICATION'
+          ].includes(existingRecord.status)
+        ) {
+          console.log(
+            `[QCOrchestrator] Skipping - already in ${existingRecord.status} state: ${chapterName} (${fileType})`
+          )
+          return
+        }
       }
     }
 
@@ -307,7 +433,8 @@ class QCOrchestrator extends EventEmitter {
       // Swap if the file marked as "mcqs" is actually a solution file OR
       // the file marked as "solution" is actually a questions file
       const mcqsIsActuallySolution = mcqsName.includes('answer') || mcqsName.includes('solution')
-      const solutionIsActuallyQuestions = solutionName.includes('question') || solutionName.includes('mcq')
+      const solutionIsActuallyQuestions =
+        solutionName.includes('question') || solutionName.includes('mcq')
 
       if (mcqsIsActuallySolution || solutionIsActuallyQuestions) {
         // Files are reversed! Swap them to ensure correct order
@@ -399,7 +526,9 @@ class QCOrchestrator extends EventEmitter {
 
       const mergedPath = path.join(qcFolder, `${chapterName}_MCQs & Solution_merged.docx`)
 
-      console.log(`[QCOrchestrator] Merging: ${path.basename(questionsFile)} + ${path.basename(solutionsFile)}`)
+      console.log(
+        `[QCOrchestrator] Merging: ${path.basename(questionsFile)} + ${path.basename(solutionsFile)}`
+      )
 
       // Invoke word merger worker with validated file order
       // IMPORTANT: questionsFile is always first, solutionsFile is appended at the end
@@ -454,7 +583,7 @@ class QCOrchestrator extends EventEmitter {
       }
     } catch (error) {
       console.error(`[QCOrchestrator] Merge failed for ${chapterName}:`, error)
-      
+
       // Set status to FAILED if we have an existing QC record
       if (existingQcId) {
         await updateQCRecord(existingQcId, {
@@ -466,7 +595,7 @@ class QCOrchestrator extends EventEmitter {
           this.emitToRenderer('qc:status-update', { record: updatedRecord })
         }
       }
-      
+
       this.emitToRenderer('qc:error', {
         message: `Failed to merge files for ${chapterName}: ${error instanceof Error ? error.message : 'Unknown error'}`
       })
@@ -532,19 +661,33 @@ class QCOrchestrator extends EventEmitter {
         // Use existing record
         recordId = existingRecord.qc_id
 
-        // Skip if already completed, failed, or currently processing
+        // Skip if already completed
         if (existingRecord.status === 'COMPLETED') {
           console.log(`[QCOrchestrator] Skipping - already completed: ${filename}`)
           return
         }
+        // Skip if failed (user must manually retry)
         if (existingRecord.status === 'FAILED') {
           console.log(`[QCOrchestrator] Skipping - FAILED (use retry button to retry): ${filename}`)
           return
         }
+        // Skip if currently being processed
         if (
-          ['CONVERTING', 'SUBMITTING', 'PROCESSING', 'DOWNLOADING'].includes(existingRecord.status)
+          [
+            'QUEUED',
+            'VALIDATING',
+            'MERGING',
+            'CONVERTING',
+            'CONVERTED',
+            'SUBMITTING',
+            'PROCESSING',
+            'DOWNLOADING',
+            'PENDING_VERIFICATION'
+          ].includes(existingRecord.status)
         ) {
-          console.log(`[QCOrchestrator] Skipping - already ${existingRecord.status}: ${filename}`)
+          console.log(
+            `[QCOrchestrator] Skipping - already in ${existingRecord.status} state: ${filename}`
+          )
           return
         }
       }
@@ -733,7 +876,7 @@ class QCOrchestrator extends EventEmitter {
         record.folder_path,
         record.file_type
       )
-      
+
       // Check if batch should be submitted now
       await this.checkBatchSubmission()
 
@@ -751,7 +894,7 @@ class QCOrchestrator extends EventEmitter {
         // Check if this is a conversion error (happened during CONVERTING status)
         const currentRecord = await getQCRecord(recordId)
         const isConversionError = currentRecord?.status === 'CONVERTING'
-        
+
         const failureStatus = isConversionError ? 'CONVERSION_FAILED' : 'FAILED'
         await updateQCStatus(recordId, failureStatus, errorMessage)
         notifyQCFailed(filename, errorMessage)
@@ -815,7 +958,9 @@ class QCOrchestrator extends EventEmitter {
     folderPath: string | null,
     fileType: string | null
   ): Promise<void> {
-    console.log(`[QCOrchestrator] Adding ${filename} to batch (current size: ${this.convertedPdfBatch.length})`)
+    console.log(
+      `[QCOrchestrator] Adding ${filename} to batch (current size: ${this.convertedPdfBatch.length})`
+    )
 
     this.convertedPdfBatch.push({
       qcId,
@@ -857,12 +1002,16 @@ class QCOrchestrator extends EventEmitter {
 
     // Submit if batch size reached
     if (this.convertedPdfBatch.length >= batchSize) {
-      console.log(`[QCOrchestrator] Batch size reached (${this.convertedPdfBatch.length}/${batchSize})`)
+      console.log(
+        `[QCOrchestrator] Batch size reached (${this.convertedPdfBatch.length}/${batchSize})`
+      )
       await this.submitBatchIfReady('size')
     }
     // Submit if queue is empty and we have minimum batch size
     else if (queueIsEmpty && this.convertedPdfBatch.length >= (config.minBatchSize || 3)) {
-      console.log(`[QCOrchestrator] Queue empty, submitting batch (${this.convertedPdfBatch.length} files)`)
+      console.log(
+        `[QCOrchestrator] Queue empty, submitting batch (${this.convertedPdfBatch.length} files)`
+      )
       await this.submitBatchIfReady('queue-empty')
     }
   }
@@ -884,7 +1033,9 @@ class QCOrchestrator extends EventEmitter {
 
       this.convertedPdfBatch = [] // Clear batch
 
-      console.log(`[QCOrchestrator] Submitting batch (trigger: ${trigger}, files: ${batchFiles.length})`)
+      console.log(
+        `[QCOrchestrator] Submitting batch (trigger: ${trigger}, files: ${batchFiles.length})`
+      )
       await this.submitBatch(batchFiles)
     } catch (error) {
       console.error('[QCOrchestrator] Error submitting batch:', error)
@@ -968,7 +1119,13 @@ class QCOrchestrator extends EventEmitter {
         const job = response.jobs.find((j) => j.qc_id === file.qcId)
         if (job) {
           const record = await getQCRecord(file.qcId)
-          await recordBatchHistory(file.qcId, batchId, job.job_id, record!.retry_count + 1, 'PROCESSING')
+          await recordBatchHistory(
+            file.qcId,
+            batchId,
+            job.job_id,
+            record!.retry_count + 1,
+            'PROCESSING'
+          )
         }
       }
 
@@ -982,7 +1139,9 @@ class QCOrchestrator extends EventEmitter {
         })
       }
 
-      console.log(`[QCOrchestrator] Batch ${batchId} submitted successfully with ${response.jobs.length} jobs`)
+      console.log(
+        `[QCOrchestrator] Batch ${batchId} submitted successfully with ${response.jobs.length} jobs`
+      )
 
       // Emit batch creation event
       this.emitToRenderer('qc:batch-created', {
@@ -992,7 +1151,7 @@ class QCOrchestrator extends EventEmitter {
       })
     } catch (error) {
       console.error(`[QCOrchestrator] Failed to submit batch ${batchId}:`, error)
-      
+
       // Handle 504 Gateway Timeout specifically - batch may have been created on backend
       if (error instanceof GatewayTimeoutError) {
         console.warn(
@@ -1018,7 +1177,10 @@ class QCOrchestrator extends EventEmitter {
         try {
           await updateBatchStatus(batchId, 'SUBMITTED')
         } catch (updateError) {
-          console.error(`[QCOrchestrator] Failed to update batch ${batchId} to SUBMITTED:`, updateError)
+          console.error(
+            `[QCOrchestrator] Failed to update batch ${batchId} to SUBMITTED:`,
+            updateError
+          )
         }
 
         // Emit recovery notification
@@ -1091,14 +1253,20 @@ class QCOrchestrator extends EventEmitter {
           status: 'FAILED'
         })
       }
-      
+
       throw error
     }
   }
 
   private async createBatchZip(
     batchId: string,
-    batchFiles: Array<{ qcId: string; pdfPath: string; originalName: string; folderPath: string | null; fileType: string | null }>,
+    batchFiles: Array<{
+      qcId: string
+      pdfPath: string
+      originalName: string
+      folderPath: string | null
+      fileType: string | null
+    }>,
     zipPath: string
   ): Promise<void> {
     const zip = new AdmZip()
@@ -1114,10 +1282,10 @@ class QCOrchestrator extends EventEmitter {
     // Add PDFs with qc_id as filename
     for (const file of batchFiles) {
       const pdfFilename = `${file.qcId}.pdf`
-      
+
       // Add PDF to ZIP
       zip.addLocalFile(file.pdfPath, '', pdfFilename)
-      
+
       // Add to manifest
       manifest.files[pdfFilename] = {
         original_name: file.originalName,
@@ -1163,7 +1331,7 @@ class QCOrchestrator extends EventEmitter {
       // SAFEGUARD: Only poll records in PROCESSING status
       // Never auto-retry failed jobs - user must manually click "Retry" button
       const individualRecords = processingRecords.filter(
-        r => !r.batch_id && r.status === 'PROCESSING'
+        (r) => !r.batch_id && r.status === 'PROCESSING'
       )
 
       for (const record of individualRecords) {
@@ -1178,7 +1346,9 @@ class QCOrchestrator extends EventEmitter {
     try {
       // Get all records in PENDING_VERIFICATION status (potential 504 recovery)
       const processingRecords = await getProcessingRecords()
-      const pendingVerification = processingRecords.filter((r) => r.status === 'PENDING_VERIFICATION')
+      const pendingVerification = processingRecords.filter(
+        (r) => r.status === 'PENDING_VERIFICATION'
+      )
 
       for (const record of pendingVerification) {
         if (!record.batch_id) continue
@@ -1231,10 +1401,7 @@ class QCOrchestrator extends EventEmitter {
 
           // Now it will be polled as normal PROCESSING record
         } catch (error) {
-          console.error(
-            `[QCOrchestrator] Error verifying record ${record.qc_id}:`,
-            error
-          )
+          console.error(`[QCOrchestrator] Error verifying record ${record.qc_id}:`, error)
         }
       }
     } catch (error) {
@@ -1314,6 +1481,55 @@ class QCOrchestrator extends EventEmitter {
       console.log(
         `[QCOrchestrator] Batch ${batchId} status: ${batchStatus.status} (${batchStatus.completed_count}/${batchStatus.file_count} completed)`
       )
+
+      // Reconcile any records still marked PROCESSING/DOWNLOADING after batch finishes
+      if (['COMPLETED', 'PARTIAL_COMPLETE', 'FAILED'].includes(batchStatus.status)) {
+        const batchRecords = await getRecordsByBatchId(batchId)
+        const stuckRecords = batchRecords.filter((r) =>
+          ['PROCESSING', 'DOWNLOADING', 'PENDING_VERIFICATION', 'SUBMITTING'].includes(r.status)
+        )
+
+        if (stuckRecords.length > 0) {
+          console.log(
+            `[QCOrchestrator] Reconciling ${stuckRecords.length} stuck records in completed batch ${batchId}`
+          )
+        }
+
+        for (const record of stuckRecords) {
+          // If we have a job id, try to fetch final status directly
+          if (record.external_qc_id) {
+            try {
+              await this.checkQCStatus(record)
+              console.log(
+                `[QCOrchestrator] Reconciled record ${record.qc_id} via direct status check`
+              )
+              continue
+            } catch (err) {
+              console.warn(
+                `[QCOrchestrator] Unable to reconcile record ${record.qc_id} after batch completion:`,
+                err
+              )
+            }
+          }
+
+          // As a fallback, mark as FAILED to avoid indefinite PROCESSING state
+          console.log(
+            `[QCOrchestrator] Marking stuck record ${record.qc_id} as FAILED (batch completed but status unavailable)`
+          )
+          await updateQCStatus(
+            record.qc_id,
+            'FAILED',
+            'Batch completed but record status unavailable'
+          )
+          notifyQCFailed(record.original_name, 'Batch completed but record status unavailable')
+          this.emitToRenderer('qc:status-update', {
+            qcId: record.qc_id,
+            status: 'FAILED',
+            error: 'Batch completed but record status unavailable',
+            batchId: batchId
+          })
+        }
+      }
     } catch (error) {
       console.error(`[QCOrchestrator] Error checking batch status for ${batchId}:`, error)
     }
