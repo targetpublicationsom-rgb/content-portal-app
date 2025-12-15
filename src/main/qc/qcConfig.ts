@@ -47,7 +47,7 @@ export function saveConfig(config: QCConfig): void {
 // Default batch configuration
 const DEFAULT_BATCH_CONFIG = {
   batchSize: 5,
-  batchTimeoutSeconds: 300,
+  batchTimeoutSeconds: 120,
   minBatchSize: 5,
   maxBatchSizeMB: 150
 }
