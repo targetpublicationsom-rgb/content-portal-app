@@ -92,6 +92,11 @@ export function initializeQCConfig(): void {
   console.log('[QCConfig] Watch folders:', currentConfig.watchFolders.join(', ') || 'None')
   console.log('[QCConfig] API URL:', currentConfig.apiUrl || 'Not configured')
   console.log('[QCConfig] API Key:', currentConfig.apiKey ? '***' + currentConfig.apiKey.slice(-4) : 'Not configured')
+  console.log('[QCConfig] Batch Configuration:')
+  console.log(`  - Batch size: ${currentConfig.batchSize} files`)
+  console.log(`  - Batch timeout: ${currentConfig.batchTimeoutSeconds} seconds`)
+  console.log(`  - Min batch size: ${currentConfig.minBatchSize} files`)
+  console.log(`  - Max batch size: ${currentConfig.maxBatchSizeMB} MB`)
 }
 
 // Get current configuration

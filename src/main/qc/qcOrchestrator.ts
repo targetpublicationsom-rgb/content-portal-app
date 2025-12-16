@@ -1153,12 +1153,23 @@ class QCOrchestrator extends EventEmitter {
     if (this.batchTimeoutTimer) {
       clearTimeout(this.batchTimeoutTimer)
       this.batchTimeoutTimer = null
+      console.log('[QCOrchestrator] Cleared existing batch timeout timer')
     }
 
-    // Don't start new timer if batch is already being processed
+    // Don't start new timer if batch is already being processed or batch is empty
     if (this.isBatchProcessing) {
+      console.log('[QCOrchestrator] Cannot start batch timeout - batch submission in progress')
       return
     }
+
+    if (this.convertedPdfBatch.length === 0) {
+      console.log('[QCOrchestrator] Cannot start batch timeout - no files in batch')
+      return
+    }
+
+    console.log(
+      `[QCOrchestrator] Starting batch timeout: ${timeoutMs}ms (${this.convertedPdfBatch.length} files in batch)`
+    )
 
     this.batchTimeoutTimer = setTimeout(async () => {
       console.log(`[QCOrchestrator] Batch timeout reached (${timeoutMs}ms), submitting batch...`)
@@ -1211,8 +1222,7 @@ class QCOrchestrator extends EventEmitter {
       // Success - files are now submitted, don't re-add them
     } catch (error) {
       console.error('[QCOrchestrator] Error submitting batch:', error)
-      // Only re-add files if they haven't been persisted to database with batch_id
-      // Check which files failed to get batch_id assigned
+      // Re-add files to batch for retry - check which files haven't been persisted with batch_id
       const failedFiles: Array<{
         qcId: string
         pdfPath: string
@@ -1221,15 +1231,30 @@ class QCOrchestrator extends EventEmitter {
         folderPath: string | null
         fileType: string | null
       }> = []
+      
       for (const file of batchFiles) {
-        const record = await getQCRecord(file.qcId)
-        if (!record?.batch_id) {
+        try {
+          const record = await getQCRecord(file.qcId)
+          if (!record?.batch_id) {
+            failedFiles.push(file)
+            console.log(`[QCOrchestrator] File ${file.filename} not persisted with batch_id, adding to retry queue`)
+          }
+        } catch (getError) {
+          // If we can't get the record, re-add the file to be safe
           failedFiles.push(file)
+          console.error(`[QCOrchestrator] Error checking record ${file.qcId}, re-adding to batch:`, getError)
         }
       }
+      
       if (failedFiles.length > 0) {
-        console.log(`[QCOrchestrator] Re-adding ${failedFiles.length} failed files to batch`)
+        console.log(`[QCOrchestrator] Re-adding ${failedFiles.length} failed files to batch queue for retry`)
         this.convertedPdfBatch.unshift(...failedFiles)
+        
+        // Restart batch timeout to allow retry after backoff
+        console.log(`[QCOrchestrator] Restarting batch timeout after failed submission`)
+        this.startBatchTimeout()
+      } else {
+        console.log(`[QCOrchestrator] All batch files persisted with batch_id - no retry needed`)
       }
     } finally {
       this.isBatchProcessing = false
@@ -1462,8 +1487,8 @@ class QCOrchestrator extends EventEmitter {
         throw error
       }
 
-      // All other errors - clean up ZIP and mark as FAILED
-      console.error(`[QCOrchestrator] Batch ${batchId} submission failed with unhandled error`)
+      // All other errors (network timeouts, connection errors, etc.)
+      console.error(`[QCOrchestrator] Batch ${batchId} submission failed with error:`, error)
       
       // Clean up ZIP file
       try {
@@ -1475,13 +1500,44 @@ class QCOrchestrator extends EventEmitter {
         console.error(`[QCOrchestrator] Failed to cleanup ZIP file:`, cleanupError)
       }
 
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      for (const file of batchFiles) {
-        await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${errorMessage}`)
-        this.emitToRenderer('qc:status-update', {
-          qcId: file.qcId,
-          status: 'FAILED'
-        })
+      // For network/timeout errors, mark records as CONVERTED so they retry via batch timeout
+      // For other errors, mark as FAILED
+      const isNetworkError = error instanceof Error && 
+        (error.message.includes('timeout') || 
+         error.message.includes('ECONNREFUSED') || 
+         error.message.includes('ETIMEDOUT') ||
+         error.message.includes('socket hang up') ||
+         error.message.includes('Network'))
+
+      if (isNetworkError) {
+        console.warn(`[QCOrchestrator] Network error detected, marking batch ${batchId} records for retry`)
+        for (const file of batchFiles) {
+          await updateQCStatus(
+            file.qcId,
+            'CONVERTED',
+            `Batch submission failed due to network error: ${error instanceof Error ? error.message : 'Unknown error'} - will retry`
+          )
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'CONVERTED',
+            message: 'Network error during submission - will retry automatically'
+          })
+        }
+        
+        // Re-add to batch for automatic retry
+        this.convertedPdfBatch.unshift(...batchFiles)
+        console.log(`[QCOrchestrator] Re-queued batch ${batchId} for retry due to network error`)
+      } else {
+        // Non-recoverable error
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        for (const file of batchFiles) {
+          await updateQCStatus(file.qcId, 'FAILED', `Batch submission failed: ${errorMessage}`)
+          this.emitToRenderer('qc:status-update', {
+            qcId: file.qcId,
+            status: 'FAILED',
+            error: errorMessage
+          })
+        }
       }
 
       throw error

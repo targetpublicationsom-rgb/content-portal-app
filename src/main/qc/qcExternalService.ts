@@ -70,7 +70,7 @@ class QCExternalService {
 
     try {
       // Try to hit a health endpoint or root endpoint
-      await this.client.get('/health')
+      await this.client.get('/health', { timeout: 10000 })
       console.log('[QCExternalService] Connection test successful')
       return true
     } catch (error) {
@@ -98,7 +98,8 @@ class QCExternalService {
         headers: {
           ...formData.getHeaders(),
           Authorization: `Bearer ${this.apiKey}`
-        }
+        },
+        timeout: 120000 // 2 minutes for individual file uploads
       })
 
       if (!response.data.success) {
@@ -119,7 +120,9 @@ class QCExternalService {
     }
 
     try {
-      const response = await this.client.get<QCStatusResponse>(`/qc/jobs/${jobId}`)
+      const response = await this.client.get<QCStatusResponse>(`/qc/jobs/${jobId}`, {
+        timeout: 10000 // 10 seconds for status checks
+      })
       return response.data
     } catch (error) {
       this.handleError('Failed to get QC status', error)
@@ -190,6 +193,13 @@ class QCExternalService {
             status
           )
         }
+      } else if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+        // Socket timeout - treat as 504
+        throw new GatewayTimeoutError(
+          'Batch submission socket timeout - batch may have been created on backend',
+          504,
+          batchId
+        )
       }
       
       throw error
@@ -202,7 +212,9 @@ class QCExternalService {
     }
 
     try {
-      const response = await this.client.get<BatchStatusResponse>(`/qc/batches/${batchId}`)
+      const response = await this.client.get<BatchStatusResponse>(`/qc/batches/${batchId}`, {
+        timeout: 10000 // 10 seconds for status checks
+      })
       return response.data
     } catch (error) {
       this.handleError('Failed to get batch status', error)

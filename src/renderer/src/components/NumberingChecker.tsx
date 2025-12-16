@@ -139,7 +139,7 @@ export default function NumberingChecker(): React.JSX.Element {
 
         {/* Expected Count */}
         <div className="space-y-2">
-          <Label htmlFor="expected-count">Expected Count (Optional)</Label>
+          <Label htmlFor="expected-count">Expected Count</Label>
           <Input
             id="expected-count"
             type="number"
