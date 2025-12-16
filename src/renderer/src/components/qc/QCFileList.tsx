@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
-  Loader2
+  Loader2,
+  Upload
 } from 'lucide-react'
 import { qcService } from '../../services/qc.service'
 import type { QCRecord, QCStatus, QCFilters } from '../../types/qc.types'
@@ -29,6 +30,7 @@ export default function QCFileList(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [convertingReports, setConvertingReports] = useState<Set<string>>(new Set())
+  const [uploadingPdfs, setUploadingPdfs] = useState<Set<string>>(new Set())
 
   // Markdown modal state
   const [showMarkdownModal, setShowMarkdownModal] = useState(false)
@@ -240,6 +242,44 @@ export default function QCFileList(): React.JSX.Element {
       setError('Failed to retry record')
       // Reload on error to get correct status
       loadRecords()
+    }
+  }
+
+  const handleUploadPdf = async (qcId: string) => {
+    try {
+      // Open file dialog to select PDF
+      const result = await window.api.dialog.showOpenDialog({
+        title: 'Select PDF file',
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+        properties: ['openFile']
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return
+      }
+
+      const pdfPath = result.filePaths[0]
+      
+      setUploadingPdfs((prev) => new Set(prev).add(qcId))
+
+      // Optimistically update UI
+      setRecords((prev) =>
+        prev.map((r) => (r.qc_id === qcId ? { ...r, status: 'CONVERTED' as QCStatus } : r))
+      )
+
+      // Upload PDF
+      await qcService.uploadPdfForRecord(qcId, pdfPath)
+    } catch (err) {
+      console.error('Failed to upload PDF:', err)
+      setError(err instanceof Error ? err.message : 'Failed to upload PDF')
+      // Reload on error to get correct status
+      loadRecords()
+    } finally {
+      setUploadingPdfs((prev) => {
+        const next = new Set(prev)
+        next.delete(qcId)
+        return next
+      })
     }
   }
 
@@ -513,6 +553,22 @@ export default function QCFileList(): React.JSX.Element {
                               title="Retry processing"
                             >
                               <RotateCw className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {record.status === 'CONVERSION_FAILED' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleUploadPdf(record.qc_id)}
+                              disabled={uploadingPdfs.has(record.qc_id)}
+                              title="Upload PDF manually"
+                            >
+                              {uploadingPdfs.has(record.qc_id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Upload className="h-4 w-4" />
+                              )}
                             </Button>
                           )}
                           {record.report_md_path && (

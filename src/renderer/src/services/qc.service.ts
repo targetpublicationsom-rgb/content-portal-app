@@ -130,6 +130,13 @@ export const qcService = {
     }
   },
 
+  async uploadPdfForRecord(qcId: string, pdfPath: string): Promise<void> {
+    const response = (await window.api.qc.uploadPdfForRecord(qcId, pdfPath)) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to upload PDF')
+    }
+  },
+
   async getBatches(statusFilter?: string[]): Promise<QCBatch[]> {
     const response = (await window.api.qc.getBatches(statusFilter)) as APIResponse<QCBatch[]>
     if (!response.success) {

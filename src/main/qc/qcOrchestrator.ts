@@ -247,7 +247,7 @@ class QCOrchestrator extends EventEmitter {
       // Recover stuck intermediate states (VALIDATING, MERGING, CONVERTING, SUBMITTING)
       // These are states where the file was being processed when app closed
       const stuckRecords = await this.getStuckIntermediateRecords()
-      
+
       if (stuckRecords.length > 0) {
         console.log(
           `[QCOrchestrator] Found ${stuckRecords.length} records stuck in intermediate states, resetting and re-enqueueing`
@@ -257,7 +257,7 @@ class QCOrchestrator extends EventEmitter {
           console.log(
             `[QCOrchestrator] Resetting ${record.original_name} from ${record.status} to QUEUED`
           )
-          
+
           // Reset to QUEUED
           await updateQCRecord(record.qc_id, {
             status: 'QUEUED',
@@ -288,7 +288,7 @@ class QCOrchestrator extends EventEmitter {
 
       // Recover QUEUED records (files that were queued but not processed before app closed)
       const queuedRecords = await getQCRecords({ status: 'QUEUED' }, 1000, 0)
-      
+
       if (queuedRecords.length > 0) {
         console.log(
           `[QCOrchestrator] Found ${queuedRecords.length} QUEUED records, re-enqueueing for processing`
@@ -296,7 +296,7 @@ class QCOrchestrator extends EventEmitter {
 
         for (const record of queuedRecords) {
           console.log(`[QCOrchestrator] Re-enqueueing QUEUED job: ${record.original_name}`)
-          
+
           // Enqueue the job for processing
           await this.enqueueJob(
             record.file_path,
@@ -330,13 +330,13 @@ class QCOrchestrator extends EventEmitter {
     const stuckStates: Array<
       'VALIDATING' | 'MERGING' | 'CONVERTING' | 'SUBMITTING'
     > = ['VALIDATING', 'MERGING', 'CONVERTING', 'SUBMITTING']
-    
+
     const allRecords: QCRecord[] = []
     for (const status of stuckStates) {
       const records = await getQCRecords({ status }, 1000, 0)
       allRecords.push(...records)
     }
-    
+
     return allRecords
   }
 
@@ -800,8 +800,8 @@ class QCOrchestrator extends EventEmitter {
         // Create new record with folder metadata
         const sourceFiles = event?.relatedFiles
           ? Object.values(event.relatedFiles)
-              .filter(Boolean)
-              .map((p) => path.basename(p))
+            .filter(Boolean)
+            .map((p) => path.basename(p))
           : undefined
 
         const record = await createQCRecord(
@@ -1231,7 +1231,7 @@ class QCOrchestrator extends EventEmitter {
         folderPath: string | null
         fileType: string | null
       }> = []
-      
+
       for (const file of batchFiles) {
         try {
           const record = await getQCRecord(file.qcId)
@@ -1245,11 +1245,11 @@ class QCOrchestrator extends EventEmitter {
           console.error(`[QCOrchestrator] Error checking record ${file.qcId}, re-adding to batch:`, getError)
         }
       }
-      
+
       if (failedFiles.length > 0) {
         console.log(`[QCOrchestrator] Re-adding ${failedFiles.length} failed files to batch queue for retry`)
         this.convertedPdfBatch.unshift(...failedFiles)
-        
+
         // Restart batch timeout to allow retry after backoff
         console.log(`[QCOrchestrator] Restarting batch timeout after failed submission`)
         this.startBatchTimeout()
@@ -1489,7 +1489,7 @@ class QCOrchestrator extends EventEmitter {
 
       // All other errors (network timeouts, connection errors, etc.)
       console.error(`[QCOrchestrator] Batch ${batchId} submission failed with error:`, error)
-      
+
       // Clean up ZIP file
       try {
         if (fsSync.existsSync(zipPath)) {
@@ -1502,12 +1502,12 @@ class QCOrchestrator extends EventEmitter {
 
       // For network/timeout errors, mark records as CONVERTED so they retry via batch timeout
       // For other errors, mark as FAILED
-      const isNetworkError = error instanceof Error && 
-        (error.message.includes('timeout') || 
-         error.message.includes('ECONNREFUSED') || 
-         error.message.includes('ETIMEDOUT') ||
-         error.message.includes('socket hang up') ||
-         error.message.includes('Network'))
+      const isNetworkError = error instanceof Error &&
+        (error.message.includes('timeout') ||
+          error.message.includes('ECONNREFUSED') ||
+          error.message.includes('ETIMEDOUT') ||
+          error.message.includes('socket hang up') ||
+          error.message.includes('Network'))
 
       if (isNetworkError) {
         console.warn(`[QCOrchestrator] Network error detected, marking batch ${batchId} records for retry`)
@@ -1523,7 +1523,7 @@ class QCOrchestrator extends EventEmitter {
             message: 'Network error during submission - will retry automatically'
           })
         }
-        
+
         // Re-add to batch for automatic retry
         this.convertedPdfBatch.unshift(...batchFiles)
         console.log(`[QCOrchestrator] Re-queued batch ${batchId} for retry due to network error`)
@@ -2028,6 +2028,61 @@ class QCOrchestrator extends EventEmitter {
 
     // Trigger queue processing immediately
     this.processQueue()
+  }
+
+  /**
+   * Resume processing with a manually uploaded PDF for a CONVERSION_FAILED record.
+   * This bypasses the Word-to-PDF conversion step and directly adds the record to the batch.
+   */
+  async resumeWithManualPdf(qcId: string, uploadedPdfPath: string): Promise<void> {
+    const record = await getQCRecord(qcId)
+    if (!record) {
+      throw new Error('Record not found')
+    }
+
+    if (record.status !== 'CONVERSION_FAILED') {
+      throw new Error(`Cannot upload PDF for record in ${record.status} status. Only CONVERSION_FAILED records are supported.`)
+    }
+
+    console.log(`[QCOrchestrator] Resuming with manual PDF for: ${record.original_name}`)
+
+    // Get output paths for this record
+    const paths = getQCOutputPaths(qcId, record.original_name)
+
+    // Copy the uploaded PDF to the QC output folder
+    console.log(`[QCOrchestrator] Copying PDF from ${uploadedPdfPath} to ${paths.pdfPath}`)
+    await fs.copyFile(uploadedPdfPath, paths.pdfPath)
+
+    // Update record status to CONVERTED and set the PDF path
+    const newRetryCount = (record.retry_count || 0) + 1
+    await updateQCRecord(qcId, {
+      status: 'CONVERTED',
+      pdf_path: paths.pdfPath,
+      batch_id: null, // Clear batch for re-accumulation
+      external_qc_id: null,
+      error_message: null,
+      retry_count: newRetryCount
+    })
+
+    console.log(`[QCOrchestrator] Record updated to CONVERTED with PDF path: ${paths.pdfPath}`)
+
+    // Emit status update to UI
+    this.emitToRenderer('qc:status-update', { qcId, status: 'CONVERTED' })
+
+    // Add to batch queue
+    await this.addToBatch(
+      qcId,
+      paths.pdfPath,
+      record.original_name,
+      record.original_name,
+      record.folder_path,
+      record.file_type
+    )
+
+    // Check if batch should be submitted
+    await this.checkBatchSubmission()
+
+    console.log(`[QCOrchestrator] Manual PDF upload complete, record added to batch`)
   }
 
   async retryFailedBatch(batchId: string): Promise<void> {

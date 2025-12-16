@@ -74,6 +74,8 @@ const api = {
     deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
     deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
     retryRecord: (qcId: string) => ipcRenderer.invoke('qc:retry-record', qcId),
+    uploadPdfForRecord: (qcId: string, pdfPath: string) =>
+      ipcRenderer.invoke('qc:upload-pdf-for-record', qcId, pdfPath),
     convertReportToDocx: (qcId: string) => ipcRenderer.invoke('qc:convert-report-to-docx', qcId),
     getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
     getBatches: (statusFilter?: string[]) => ipcRenderer.invoke('qc:get-batches', statusFilter),

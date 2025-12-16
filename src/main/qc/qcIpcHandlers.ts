@@ -229,6 +229,22 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  // Upload PDF manually for CONVERSION_FAILED records
+  ipcMain.handle('qc:upload-pdf-for-record', async (_event, qcId: string, pdfPath: string) => {
+    try {
+      console.log(`[QC IPC] Uploading PDF for record: ${qcId}`)
+
+      const orchestrator = getQCOrchestrator()
+      await orchestrator.resumeWithManualPdf(qcId, pdfPath)
+
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to upload PDF'
+      console.error('[QC IPC] Error uploading PDF:', error)
+      return { success: false, error: message }
+    }
+  })
+
   // Convert report to DOCX on-demand
   ipcMain.handle('qc:convert-report-to-docx', async (_event, qcId: string) => {
     try {
@@ -269,12 +285,12 @@ export function registerQCIpcHandlers(): void {
 
       // Convert using Pandoc worker
       console.log('[QC IPC] Converting MD to DOCX on-demand for:', qcId)
-      
+
       // Sanitize the markdown file before conversion
       const mdContent = await fs.readFile(record.report_md_path, 'utf-8')
       const sanitizedMd = sanitizeYAMLFrontMatter(mdContent)
       await fs.writeFile(record.report_md_path, sanitizedMd, 'utf-8')
-      
+
       const workerPool = orchestrator.getWorkerPool()
       if (!workerPool) {
         return { success: false, error: 'Worker pool not available' }
@@ -439,6 +455,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:delete-record')
   ipcMain.removeHandler('qc:delete-all-records')
   ipcMain.removeHandler('qc:retry-record')
+  ipcMain.removeHandler('qc:upload-pdf-for-record')
   ipcMain.removeHandler('qc:convert-report-to-docx')
   ipcMain.removeHandler('qc:update-config')
   ipcMain.removeHandler('qc:get-batches')

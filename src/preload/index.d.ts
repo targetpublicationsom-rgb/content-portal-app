@@ -77,6 +77,7 @@ interface API {
     deleteRecord: (qcId: string) => Promise<any>
     deleteAllRecords: () => Promise<any>
     retryRecord: (qcId: string) => Promise<any>
+    uploadPdfForRecord: (qcId: string, pdfPath: string) => Promise<any>
     convertReportToDocx: (qcId: string) => Promise<any>
     getBatches: (statusFilter?: string[]) => Promise<any>
     retryBatch: (batchId: string) => Promise<any>
