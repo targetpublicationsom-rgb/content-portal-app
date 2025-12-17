@@ -259,7 +259,7 @@ export default function QCFileList(): React.JSX.Element {
       }
 
       const pdfPath = result.filePaths[0]
-      
+
       setUploadingPdfs((prev) => new Set(prev).add(qcId))
 
       // Optimistically update UI
@@ -391,11 +391,10 @@ export default function QCFileList(): React.JSX.Element {
           <Link
             key={item.path}
             to={item.path}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              location.pathname === item.path
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${location.pathname === item.path
                 ? 'bg-primary text-primary-foreground'
                 : 'hover:bg-accent hover:text-accent-foreground'
-            }`}
+              }`}
           >
             {item.label}
           </Link>
@@ -438,7 +437,11 @@ export default function QCFileList(): React.JSX.Element {
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="QUEUED">Queued</SelectItem>
+                  <SelectItem value="VALIDATING">Validating</SelectItem>
+                  <SelectItem value="MERGING">Merging</SelectItem>
                   <SelectItem value="CONVERTING">Converting</SelectItem>
+                  <SelectItem value="CONVERTED">Converted</SelectItem>
+                  <SelectItem value="CONVERSION_FAILED">Conversion Failed</SelectItem>
                   <SelectItem value="SUBMITTING">Submitting</SelectItem>
                   <SelectItem value="PROCESSING">Processing</SelectItem>
                   <SelectItem value="DOWNLOADING">Downloading</SelectItem>
@@ -545,16 +548,16 @@ export default function QCFileList(): React.JSX.Element {
                           {(record.status === 'CONVERSION_FAILED' ||
                             record.status === 'FAILED' ||
                             record.status === 'NUMBERING_FAILED') && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleRetry(record.qc_id)}
-                              title="Retry processing"
-                            >
-                              <RotateCw className="h-4 w-4" />
-                            </Button>
-                          )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleRetry(record.qc_id)}
+                                title="Retry processing"
+                              >
+                                <RotateCw className="h-4 w-4" />
+                              </Button>
+                            )}
                           {record.status === 'CONVERSION_FAILED' && (
                             <Button
                               variant="ghost"
@@ -630,9 +633,9 @@ export default function QCFileList(): React.JSX.Element {
               <span className="text-sm text-muted-foreground whitespace-nowrap">
                 {totalRecords > 0
                   ? `${(currentPage - 1) * itemsPerPage + 1}-${Math.min(
-                      currentPage * itemsPerPage,
-                      totalRecords
-                    )} of ${totalRecords}`
+                    currentPage * itemsPerPage,
+                    totalRecords
+                  )} of ${totalRecords}`
                   : '0 records'}
               </span>
               <div className="flex gap-1">
