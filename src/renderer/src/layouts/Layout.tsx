@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, LogOut, FileCheck, ListChecks } from 'lucide-react'
+import { LayoutDashboard, LogOut, FileCheck, ListChecks } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import StatusBar from '../components/StatusBar'
@@ -60,8 +60,7 @@ export default function Layout(): React.JSX.Element {
   }
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/jobs', label: 'Jobs', icon: Briefcase },
+    { path: '/uploader', label: 'Question Uploader', icon: LayoutDashboard },
     { path: '/qc', label: 'QC', icon: FileCheck },
     { path: '/numbering-checker', label: 'Numbering Checker', icon: ListChecks }
   ]
@@ -77,7 +76,12 @@ export default function Layout(): React.JSX.Element {
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive = location.pathname === item.path
+            // Check if current path starts with the item path (except for root path)
+            // For /uploader, it should match /uploader, /uploader/jobs, etc.
+            const isActive =
+              location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path))
+
             return (
               <Link
                 key={item.path}
