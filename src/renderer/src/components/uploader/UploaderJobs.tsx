@@ -893,15 +893,17 @@ export default function UploaderJobs(): React.JSX.Element {
                         )}
                     </div>
                 </div>
-                <UploadForm
-                    open={showUpload}
-                    onClose={() => setShowUpload(false)}
-                    onSuccess={(jobId) => {
-                        setActiveJobId(jobId)
-                        setShowJobProgress(true)
-                        fetchJobsData()
-                    }}
-                />
+                {showUpload && (
+                    <UploadForm
+                        open={showUpload}
+                        onClose={() => setShowUpload(false)}
+                        onSuccess={(jobId) => {
+                            setActiveJobId(jobId)
+                            setShowJobProgress(true)
+                            fetchJobsData()
+                        }}
+                    />
+                )}
 
                 <JobProgress
                     open={showJobProgress}

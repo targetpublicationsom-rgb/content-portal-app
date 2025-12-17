@@ -1,7 +1,6 @@
 import { createHashRouter, Navigate } from 'react-router-dom'
 import Layout from './layouts/Layout'
-import Dashboard from './components/Dashboard'
-import Jobs from './components/Jobs'
+
 import JobDetails from './components/JobDetails'
 import Login from './components/Login'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -40,15 +39,7 @@ export const router = createHashRouter([
         path: '/uploader/jobs',
         element: <UploaderJobs />
       },
-      // Legacy routes (for backwards compatibility)
-      {
-        path: '/dashboard',
-        element: <Dashboard />
-      },
-      {
-        path: '/jobs',
-        element: <Jobs />
-      },
+
       // QC module routes
       {
         path: '/qc',
