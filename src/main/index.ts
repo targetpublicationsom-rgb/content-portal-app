@@ -37,6 +37,7 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const DEFAULT_PORT = 6284
 const TOKEN_FILE = join(app.getPath('userData'), 'auth-token.enc')
+const TOKEN_EXPIRY_DAYS = 7 // Token expires after 7 days
 
 // Handle single instance - prevent multiple instances from running
 const gotTheLock = app.requestSingleInstanceLock()
@@ -683,17 +684,23 @@ ipcMain.handle('is-server-starting', () => isServerStarting())
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 
 // Auth token management IPC handlers
+// Token is stored as JSON with timestamp: { token: string, storedAt: number }
 ipcMain.handle('store-auth-token', async (_event, token: string) => {
   try {
+    const tokenData = JSON.stringify({
+      token,
+      storedAt: Date.now()
+    })
+
     if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(token)
+      const encrypted = safeStorage.encryptString(tokenData)
       fs.writeFileSync(TOKEN_FILE, encrypted)
-      console.log('[Main] Auth token stored securely')
+      console.log('[Main] Auth token stored securely with timestamp')
     } else {
       // Fallback: store as base64 (less secure but works everywhere)
-      const encoded = Buffer.from(token).toString('base64')
+      const encoded = Buffer.from(tokenData).toString('base64')
       fs.writeFileSync(TOKEN_FILE, encoded)
-      console.log('[Main] Auth token stored (fallback mode)')
+      console.log('[Main] Auth token stored with timestamp (fallback mode)')
     }
   } catch (error) {
     console.error('[Main] Failed to store auth token:', error)
@@ -708,14 +715,41 @@ ipcMain.handle('get-auth-token', async () => {
     }
 
     const data = fs.readFileSync(TOKEN_FILE)
+    let tokenDataStr: string
 
     if (safeStorage.isEncryptionAvailable()) {
-      const decrypted = safeStorage.decryptString(data)
-      return decrypted
+      tokenDataStr = safeStorage.decryptString(data)
     } else {
       // Fallback: decode from base64
-      const decoded = Buffer.from(data.toString(), 'base64').toString('utf-8')
-      return decoded
+      tokenDataStr = Buffer.from(data.toString(), 'base64').toString('utf-8')
+    }
+
+    // Parse token data and check expiry
+    try {
+      const tokenData = JSON.parse(tokenDataStr)
+
+      // Check if token has expired (7 days)
+      const expiryMs = TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const tokenAge = now - tokenData.storedAt
+
+      if (tokenAge > expiryMs) {
+        console.log('[Main] Auth token has expired, clearing...')
+        // Token has expired, clear it
+        if (fs.existsSync(TOKEN_FILE)) {
+          fs.unlinkSync(TOKEN_FILE)
+        }
+        return null
+      }
+
+      return tokenData.token
+    } catch {
+      // Legacy format (just the token string) - treat as expired for migration
+      console.log('[Main] Legacy token format detected, treating as expired')
+      if (fs.existsSync(TOKEN_FILE)) {
+        fs.unlinkSync(TOKEN_FILE)
+      }
+      return null
     }
   } catch (error) {
     console.error('[Main] Failed to get auth token:', error)

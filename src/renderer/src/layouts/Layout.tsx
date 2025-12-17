@@ -50,7 +50,8 @@ export default function Layout(): React.JSX.Element {
       console.error('Logout error:', error)
     } finally {
       // Clear storage regardless of API response
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token') // Legacy key
+      localStorage.removeItem('auth_token_data') // New key with timestamp
       localStorage.removeItem('user')
       await window.api.clearAuthToken()
       toast.success('Logged out successfully')

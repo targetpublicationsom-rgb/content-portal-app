@@ -64,8 +64,12 @@ export default function Login(): React.JSX.Element {
       const response = await api.post('/generate-token', { email, password })
       const { authorization } = response.data.data
 
-      // Store token in localStorage and main process
-      localStorage.setItem('auth_token', authorization.token)
+      // Store token with timestamp in localStorage and main process (7-day expiry)
+      const tokenData = {
+        token: authorization.token,
+        storedAt: Date.now()
+      }
+      localStorage.setItem('auth_token_data', JSON.stringify(tokenData))
       await window.api.storeAuthToken(authorization.token)
 
       // Step 2: Fetch user data with the token
