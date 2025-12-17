@@ -36,6 +36,7 @@ nsis:
   createStartMenuShortcut: true
   oneClick: false
   allowToChangeInstallationDirectory: true
+  include: build/uninstaller.nsh
 portable:
   artifactName: ${name}-${version}-portable.${ext}
 mac:
