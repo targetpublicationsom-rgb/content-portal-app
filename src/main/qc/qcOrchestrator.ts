@@ -250,7 +250,7 @@ class QCOrchestrator extends EventEmitter {
           console.log(`[QCOrchestrator] Re-queueing for batch: ${record.original_name}`)
           this.convertedPdfBatch.push({
             qcId: record.qc_id,
-            pdfPath: record.pdf_path,
+            pdfPath: pdfPath,
             filename: record.original_name,
             originalName: record.original_name,
             folderPath: record.folder_path,
