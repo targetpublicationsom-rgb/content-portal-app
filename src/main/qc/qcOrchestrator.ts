@@ -212,7 +212,26 @@ class QCOrchestrator extends EventEmitter {
 
         // Add recovered records to batch queue (with deduplication)
         for (const record of convertedRecords) {
-          if (!record.pdf_path) {
+          let pdfPath = record.pdf_path
+
+          if (!pdfPath) {
+            // FALLBACK: If pdf_path is missing but status is CONVERTED, check if PDF exists on disk
+            try {
+              const paths = getQCOutputPaths(record.qc_id, record.original_name)
+              await fs.access(paths.pdfPath)
+              console.log(
+                `[QCOrchestrator] Found manual PDF for ${record.original_name} at ${paths.pdfPath}, recovering...`
+              )
+              pdfPath = paths.pdfPath
+
+              // Update the record with this path so we don't need to look it up again
+              await updateQCPdfPath(record.qc_id, paths.pdfPath)
+            } catch {
+              // Still missing
+            }
+          }
+
+          if (!pdfPath) {
             console.warn(
               `[QCOrchestrator] Recovered CONVERTED record ${record.qc_id} missing pdf_path, skipping`
             )
