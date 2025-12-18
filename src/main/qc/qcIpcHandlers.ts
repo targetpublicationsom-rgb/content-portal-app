@@ -420,8 +420,8 @@ export function registerQCIpcHandlers(): void {
   ipcMain.handle('qc:retry-batch', async (_event, batchId: string) => {
     try {
       const orchestrator = getQCOrchestrator()
-      await orchestrator.retryFailedBatch(batchId)
-      return { success: true }
+      const result = await orchestrator.retryFailedBatch(batchId)
+      return { success: true, data: result }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to retry batch'
       console.error('[QC IPC] Error retrying batch:', error)

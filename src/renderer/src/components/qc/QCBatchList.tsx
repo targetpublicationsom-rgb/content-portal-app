@@ -31,7 +31,10 @@ const ITEMS_PER_PAGE = 10
 
 interface RetryResult {
   batchId: string
-  failedCount: number
+  retriedCount: number
+  skippedCount: number
+  skippedReasons: string[]
+  maxRetryLimitReached: string[]
 }
 
 export default function QCBatchList(): React.JSX.Element {
@@ -213,20 +216,28 @@ export default function QCBatchList(): React.JSX.Element {
 
     const config = statusConfig[status] || statusConfig.QUEUED
     return (
-      <Badge variant="default" className={`${config.className} flex items-center w-fit text-xs`}>
+      <Badge variant="default" className={`${config.className} flex items-center gap-2 w-fit px-2 py-1`}>
         {config.icon}
-        {status}
+        <span className="whitespace-nowrap">{status}</span>
       </Badge>
     )
   }
 
-  const retryBatch = async (batchId: string, failedCount: number): Promise<void> => {
+  const retryBatch = async (batchId: string): Promise<void> => {
     try {
       setRetryingBatches((prev) => new Set(prev).add(batchId))
-      await qcService.retryBatch(batchId)
+      const result = await qcService.retryBatch(batchId)
+      
       // Immediately reload batches to reflect updated status
       await loadBatches()
-      setRetryResult({ batchId, failedCount })
+      
+      setRetryResult({
+        batchId,
+        retriedCount: result.retriedCount,
+        skippedCount: result.skippedCount,
+        skippedReasons: result.skippedReasons,
+        maxRetryLimitReached: result.maxRetryLimitReached
+      })
       setShowRetryModal(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry batch')
@@ -378,7 +389,7 @@ export default function QCBatchList(): React.JSX.Element {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => retryBatch(batch.batch_id, batch.failed_count)}
+                                  onClick={() => retryBatch(batch.batch_id)}
                                   disabled={retryingBatches.has(batch.batch_id)}
                                   className="flex items-center gap-1"
                                 >
@@ -440,45 +451,69 @@ export default function QCBatchList(): React.JSX.Element {
         </Card>
       )}
 
-      {/* Retry Success Modal */}
+      {/* Retry Result Modal */}
       <Dialog open={showRetryModal} onOpenChange={setShowRetryModal}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              Batch Retry Successful
+              {retryResult?.retriedCount && retryResult.retriedCount > 0 ? (
+                <>
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  Batch Retry Processed
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-5 w-5 text-amber-600" />
+                  Batch Retry Completed (None Retried)
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              The failed files have been re-queued for processing.
+              {retryResult?.retriedCount && retryResult.retriedCount > 0
+                ? 'Files have been re-queued for processing.'
+                : 'No eligible files were found for retry.'}
             </DialogDescription>
           </DialogHeader>
+          
           {retryResult && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Batch ID</p>
-                  <p className="font-mono text-xs mt-1">
-                    {retryResult.batchId.substring(0, 12)}...
+                <div className="bg-muted p-3 rounded-md">
+                  <p className="text-sm text-muted-foreground">Retried</p>
+                  <p className="text-2xl font-bold text-green-600 mt-1">{retryResult.retriedCount}</p>
+                </div>
+                <div className="bg-muted p-3 rounded-md">
+                  <p className="text-sm text-muted-foreground">Skipped</p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">{retryResult.skippedCount}</p>
+                </div>
+              </div>
+
+              {retryResult.skippedReasons.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium mb-2">Skipped Files ({retryResult.skippedReasons.length})</p>
+                  <div className="max-h-40 overflow-y-auto border rounded-md p-2 bg-muted/30">
+                    <ul className="text-xs space-y-1 text-muted-foreground">
+                      {retryResult.skippedReasons.map((reason, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-amber-500 mt-0.5">•</span>
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {retryResult.retriedCount > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                  <p className="text-xs text-blue-800 dark:text-blue-200">
+                    <strong>Note:</strong> Retried files are removed from this batch and queued individually. They will form new batches automatically.
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Files Re-queued</p>
-                  <p className="text-2xl font-bold text-blue-600 mt-1">{retryResult.failedCount}</p>
-                </div>
-              </div>
-              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md p-4">
-                <p className="text-sm text-blue-900 dark:text-blue-100">
-                  <strong>What happens next:</strong>
-                </p>
-                <ul className="mt-2 space-y-1 text-sm text-blue-800 dark:text-blue-200">
-                  <li>• Failed files have been removed from the original batch</li>
-                  <li>• Files are now queued individually for re-processing</li>
-                  <li>• They will be grouped into new batches as they accumulate</li>
-                  <li>• You can monitor progress in the Files tab</li>
-                </ul>
-              </div>
+              )}
             </div>
           )}
+          
           <DialogFooter>
             <Button onClick={() => setShowRetryModal(false)}>Close</Button>
           </DialogFooter>

@@ -86,6 +86,10 @@ class QCOrchestrator extends EventEmitter {
   private batchTimeoutTimer: NodeJS.Timeout | null = null
   private isBatchProcessing = false
 
+  // Retry tracking to prevent concurrent retries of the same record
+  private retryingRecords: Set<string> = new Set()
+  private static readonly MAX_RETRY_LIMIT = 10
+
   async initialize(mainWindow: BrowserWindow): Promise<void> {
     if (this.isInitialized) {
       console.log('[QCOrchestrator] Already initialized')
@@ -2000,34 +2004,54 @@ class QCOrchestrator extends EventEmitter {
       throw new Error('Record not found')
     }
 
-    console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
-    console.log(
-      `[QCOrchestrator] CONSTRAINT: Clearing batch_id for re-accumulation (was: ${record.batch_id})`
-    )
+    // Check if this record is already being retried
+    if (this.retryingRecords.has(qcId)) {
+      throw new Error('Record is already being retried. Please wait.')
+    }
 
-    // 🔒 SAFEGUARD: Only user action (manual retry) can reset batch assignment
-    // Clear batch_id to allow re-accumulation into potentially different batch
-    // Keep original_batch_id for audit trail showing first batch it belonged to
-    // Increment retry_count to track how many times user retried
-    const newRetryCount = (record.retry_count || 0) + 1
-    await updateQCRecord(qcId, {
-      status: 'QUEUED',
-      batch_id: null, // Clear current batch - allows re-accumulation
-      external_qc_id: null,
-      error_message: null,
-      retry_count: newRetryCount,
-      submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
-    })
+    // Check max retry limit
+    if ((record.retry_count || 0) >= QCOrchestrator.MAX_RETRY_LIMIT) {
+      throw new Error(
+        `Record has reached maximum retry limit (${QCOrchestrator.MAX_RETRY_LIMIT}). Cannot retry further.`
+      )
+    }
 
-    console.log(`[QCOrchestrator] Retry count incremented to: ${newRetryCount}`)
+    // Lock the record
+    this.retryingRecords.add(qcId)
 
-    this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
+    try {
+      console.log(`[QCOrchestrator] Manually retrying record: ${record.original_name}`)
+      console.log(
+        `[QCOrchestrator] CONSTRAINT: Clearing batch_id for re-accumulation (was: ${record.batch_id})`
+      )
 
-    // Enqueue the retry job (respects concurrency limits)
-    await this.enqueueJob(record.file_path, record.original_name, true)
+      // 🔒 SAFEGUARD: Only user action (manual retry) can reset batch assignment
+      // Clear batch_id to allow re-accumulation into potentially different batch
+      // Keep original_batch_id for audit trail showing first batch it belonged to
+      // Increment retry_count to track how many times user retried
+      const newRetryCount = (record.retry_count || 0) + 1
+      await updateQCRecord(qcId, {
+        status: 'QUEUED',
+        batch_id: null, // Clear current batch - allows re-accumulation
+        external_qc_id: null,
+        error_message: null,
+        retry_count: newRetryCount,
+        submitted_at: new Date().toISOString() // Reset timestamp to avoid stuck detection
+      })
 
-    // Trigger queue processing immediately
-    this.processQueue()
+      console.log(`[QCOrchestrator] Retry count incremented to: ${newRetryCount}`)
+
+      this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
+
+      // Enqueue the retry job (respects concurrency limits)
+      await this.enqueueJob(record.file_path, record.original_name, true)
+
+      // Trigger queue processing immediately
+      this.processQueue()
+    } finally {
+      // Always release the lock
+      this.retryingRecords.delete(qcId)
+    }
   }
 
   /**
@@ -2085,16 +2109,36 @@ class QCOrchestrator extends EventEmitter {
     console.log(`[QCOrchestrator] Manual PDF upload complete, record added to batch`)
   }
 
-  async retryFailedBatch(batchId: string): Promise<void> {
+  async retryFailedBatch(batchId: string): Promise<{
+    success: boolean
+    retriedCount: number
+    skippedCount: number
+    skippedReasons: string[]
+    newBatchId?: string
+    maxRetryLimitReached: string[]
+  }> {
     console.log(`[QCOrchestrator] Retrying failed files in batch: ${batchId}`)
+
+    const result = {
+      success: false,
+      retriedCount: 0,
+      skippedCount: 0,
+      skippedReasons: [] as string[],
+      newBatchId: undefined as string | undefined,
+      maxRetryLimitReached: [] as string[]
+    }
 
     // Get all records in this batch (regardless of current status)
     const allRecords = await getRecordsByBatchId(batchId)
-    const failedRecords = allRecords.filter((r) => r.status === 'FAILED')
+    // Include both FAILED and CONVERSION_FAILED in retry candidates
+    const failedRecords = allRecords.filter(
+      (r) => r.status === 'FAILED' || r.status === 'CONVERSION_FAILED'
+    )
 
     if (failedRecords.length === 0) {
       console.log(`[QCOrchestrator] No failed records found in batch ${batchId}`)
-      return
+      result.success = true // Not an error, just nothing to retry
+      return result
     }
 
     console.log(
@@ -2105,7 +2149,7 @@ class QCOrchestrator extends EventEmitter {
     // These records are already CONVERTED and have PDFs - just need API resubmission
 
     try {
-      // Verify all failed records have PDFs
+      // Build batch with comprehensive validation
       const batchFiles: Array<{
         qcId: string
         pdfPath: string
@@ -2116,55 +2160,125 @@ class QCOrchestrator extends EventEmitter {
       }> = []
 
       for (const record of failedRecords) {
-        if (!record.pdf_path) {
-          console.warn(
-            `[QCOrchestrator] Failed record ${record.qc_id} missing pdf_path, skipping retry`
-          )
+        // Check 1: Is this record already being retried?
+        if (this.retryingRecords.has(record.qc_id)) {
+          const skipReason = `${record.original_name}: Already being retried`
+          console.warn(`[QCOrchestrator] ${skipReason}`)
+          result.skippedReasons.push(skipReason)
+          result.skippedCount++
           continue
         }
 
+        // Check 2: Has max retry limit been reached?
+        if ((record.retry_count || 0) >= QCOrchestrator.MAX_RETRY_LIMIT) {
+          const skipReason = `${record.original_name}: Max retry limit (${QCOrchestrator.MAX_RETRY_LIMIT}) reached`
+          console.warn(`[QCOrchestrator] ${skipReason}`)
+          result.skippedReasons.push(skipReason)
+          result.maxRetryLimitReached.push(record.original_name)
+          result.skippedCount++
+          continue
+        }
+
+        // Check 3: Does record have pdf_path?
+        let pdfPath = record.pdf_path
+
+        // FALLBACK: If pdf_path is missing (e.g. CONVERSION_FAILED), check if user manually uploaded it to qc_output
+        if (!pdfPath) {
+          try {
+            const paths = getQCOutputPaths(record.qc_id, record.original_name)
+            await fs.access(paths.pdfPath)
+            console.log(
+              `[QCOrchestrator] Found manual PDF for ${record.original_name} at ${paths.pdfPath}, recovering...`
+            )
+            pdfPath = paths.pdfPath
+
+            // Update the record with this path so we don't need to look it up again
+            await updateQCPdfPath(record.qc_id, pdfPath)
+          } catch {
+            // Still missing - proceed to standard failure
+          }
+        }
+
+        if (!pdfPath) {
+          const skipReason = `${record.original_name}: Missing PDF path`
+          console.warn(`[QCOrchestrator] ${skipReason}`)
+          result.skippedReasons.push(skipReason)
+          result.skippedCount++
+          continue
+        }
+
+        // Check 4: Does PDF file actually exist on disk?
+        try {
+          await fs.access(pdfPath)
+        } catch {
+          const skipReason = `${record.original_name}: PDF file not found on disk`
+          console.warn(`[QCOrchestrator] ${skipReason}`)
+          result.skippedReasons.push(skipReason)
+          result.skippedCount++
+          continue
+        }
+
+        // All checks passed - add to batch
         batchFiles.push({
           qcId: record.qc_id,
-          pdfPath: record.pdf_path,
+          pdfPath: pdfPath,
           filename: record.original_name,
           originalName: record.original_name,
           folderPath: record.folder_path,
           fileType: record.file_type
         })
+
+        // Mark as being retried (lock)
+        this.retryingRecords.add(record.qc_id)
       }
 
       if (batchFiles.length === 0) {
-        console.error(`[QCOrchestrator] No valid PDFs found for failed records in batch ${batchId}`)
-        return
+        console.error(
+          `[QCOrchestrator] No valid PDFs found for failed records in batch ${batchId}`
+        )
+        result.success = false
+        return result
       }
 
       console.log(
         `[QCOrchestrator] Creating subset batch with ${batchFiles.length} failed PDFs from batch ${batchId}`
       )
 
-      // Update failed records: clear external_qc_id, keep CONVERTED status temporarily
+      // Update failed records: set to SUBMITTING immediately for UI feedback
       for (const file of batchFiles) {
+        const currentRecord = await getQCRecord(file.qcId)
         await updateQCRecord(file.qcId, {
+          status: 'SUBMITTING',
           external_qc_id: null,
           error_message: null,
-          retry_count: ((await getQCRecord(file.qcId))?.retry_count || 0) + 1
+          retry_count: (currentRecord?.retry_count || 0) + 1
+        })
+        this.emitToRenderer('qc:status-update', {
+          qcId: file.qcId,
+          status: 'SUBMITTING'
         })
       }
 
       // Submit new batch using existing submitBatch logic (which will create new batch_id)
       await this.submitBatch(batchFiles)
 
+      // Update result
+      result.success = true
+      result.retriedCount = batchFiles.length
+
       // Update original batch status to PARTIAL_COMPLETE
       const remainingRecords = await getRecordsByBatchId(batchId)
       const completedCount = remainingRecords.filter((r) => r.status === 'COMPLETED').length
-      const failedCount = 0 // All failed records now moved to new batch
+      const failedCount = remainingRecords.filter((r) => r.status === 'FAILED').length
       const processingCount = remainingRecords.filter(
         (r) => r.status === 'PROCESSING' || r.status === 'DOWNLOADING'
       ).length
 
       await updateBatchStatus(
         batchId,
-        completedCount > 0 ? 'PARTIAL_COMPLETE' : 'COMPLETED',
+        completedCount > 0 && failedCount === 0 && processingCount === 0
+          ? 'PARTIAL_COMPLETE'
+          : 'PARTIAL_COMPLETE',
         completedCount,
         failedCount,
         processingCount
@@ -2176,9 +2290,17 @@ class QCOrchestrator extends EventEmitter {
       console.log(
         `[QCOrchestrator] Original batch ${batchId} marked as PARTIAL_COMPLETE (${completedCount} completed)`
       )
+
+      return result
     } catch (error) {
       console.error(`[QCOrchestrator] Failed to create subset batch for ${batchId}:`, error)
+      result.success = false
       throw error
+    } finally {
+      // Always release the retry locks
+      for (const record of failedRecords) {
+        this.retryingRecords.delete(record.qc_id)
+      }
     }
   }
 

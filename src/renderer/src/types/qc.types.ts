@@ -114,3 +114,12 @@ export interface QCBatch {
   failed_count: number
   processing_count: number
 }
+
+export interface BatchRetryResult {
+  success: boolean
+  retriedCount: number
+  skippedCount: number
+  skippedReasons: string[]
+  newBatchId?: string
+  maxRetryLimitReached: string[]
+}

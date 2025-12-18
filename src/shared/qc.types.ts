@@ -190,3 +190,12 @@ export interface BatchStatusResponse {
     failed_files: string[]
   }
 }
+
+export interface BatchRetryResult {
+  success: boolean
+  retriedCount: number
+  skippedCount: number
+  skippedReasons: string[]
+  newBatchId?: string
+  maxRetryLimitReached: string[] // Records that hit max retry limit
+}
