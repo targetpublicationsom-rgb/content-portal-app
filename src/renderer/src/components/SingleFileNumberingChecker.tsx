@@ -77,19 +77,7 @@ export default function SingleFileNumberingChecker(): React.JSX.Element {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto mb-5">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FileText className="h-6 w-6" />
-          Single File Numbering Checker
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Validate question and solution numbering in DOCX/HTML files with delimiter-separated
-          blocks
-        </p>
-      </div>
-
+    <div className="pb-6 max-w-5xl mx-auto mb-5">
       {/* Input Form */}
       <div className="bg-card border rounded-lg p-6 space-y-5">
         {/* File Input */}
