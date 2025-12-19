@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, LogOut } from 'lucide-react'
+import { LayoutDashboard, LogOut, FileCheck, ListChecks } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import StatusBar from '../components/StatusBar'
@@ -50,7 +50,8 @@ export default function Layout(): React.JSX.Element {
       console.error('Logout error:', error)
     } finally {
       // Clear storage regardless of API response
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token') // Legacy key
+      localStorage.removeItem('auth_token_data') // New key with timestamp
       localStorage.removeItem('user')
       await window.api.clearAuthToken()
       toast.success('Logged out successfully')
@@ -59,8 +60,9 @@ export default function Layout(): React.JSX.Element {
   }
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/jobs', label: 'Jobs', icon: Briefcase }
+    { path: '/uploader', label: 'Question Uploader', icon: LayoutDashboard },
+    { path: '/qc', label: 'QC', icon: FileCheck },
+    { path: '/numbering-checker', label: 'Numbering Checker', icon: ListChecks }
   ]
 
   return (
@@ -74,16 +76,20 @@ export default function Layout(): React.JSX.Element {
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive = location.pathname === item.path
+            // Check if current path starts with the item path (except for root path)
+            // For /uploader, it should match /uploader, /uploader/jobs, etc.
+            const isActive =
+              location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path))
+
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-accent hover:text-accent-foreground'
-                }`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-accent hover:text-accent-foreground'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 <span className="font-medium">{item.label}</span>

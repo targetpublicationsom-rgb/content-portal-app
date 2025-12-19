@@ -176,7 +176,7 @@ function startServerProcess(context: ServerContext, executablePath: string): Pro
     // Listen to stdout for startup confirmation
     context.process.stdout?.on('data', (data) => {
       const message = data.toString().trim()
-      console.log(`[Server]: ${message}`)
+      // console.log(`[Server]: ${message}`)
 
       if (
         !resolved &&

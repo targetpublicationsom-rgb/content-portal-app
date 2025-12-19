@@ -54,7 +54,70 @@ const api = {
     ipcRenderer.invoke('get-auth-token'),
 
   clearAuthToken: (): Promise<void> =>
-    ipcRenderer.invoke('clear-auth-token')
+    ipcRenderer.invoke('clear-auth-token'),
+
+  // QC Module APIs
+  qc: {
+    getRecords: (filters?: any, limit?: number, offset?: number) =>
+      ipcRenderer.invoke('qc:get-records', filters, limit, offset),
+    getRecord: (qcId: string) => ipcRenderer.invoke('qc:get-record', qcId),
+    getStats: () => ipcRenderer.invoke('qc:get-stats'),
+    getConfig: () => ipcRenderer.invoke('qc:get-config'),
+    updateConfig: (updates: any) => ipcRenderer.invoke('qc:update-config', updates),
+    testConnection: () => ipcRenderer.invoke('qc:test-connection'),
+    addWatchFolder: (folderPath: string) => ipcRenderer.invoke('qc:add-watch-folder', folderPath),
+    removeWatchFolder: (folderPath: string) =>
+      ipcRenderer.invoke('qc:remove-watch-folder', folderPath),
+    startWatcher: () => ipcRenderer.invoke('qc:start-watcher'),
+    stopWatcher: () => ipcRenderer.invoke('qc:stop-watcher'),
+    isWatcherActive: () => ipcRenderer.invoke('qc:is-watcher-active'),
+    deleteRecord: (qcId: string) => ipcRenderer.invoke('qc:delete-record', qcId),
+    deleteAllRecords: () => ipcRenderer.invoke('qc:delete-all-records'),
+    retryRecord: (qcId: string) => ipcRenderer.invoke('qc:retry-record', qcId),
+    uploadPdfForRecord: (qcId: string, pdfPath: string) =>
+      ipcRenderer.invoke('qc:upload-pdf-for-record', qcId, pdfPath),
+    convertReportToDocx: (qcId: string) => ipcRenderer.invoke('qc:convert-report-to-docx', qcId),
+    getWatcherStatus: () => ipcRenderer.invoke('qc:get-watcher-status'),
+    getBatches: (statusFilter?: string[]) => ipcRenderer.invoke('qc:get-batches', statusFilter),
+    retryBatch: (batchId: string) => ipcRenderer.invoke('qc:retry-batch', batchId),
+    getBatchFiles: (batchId: string) => ipcRenderer.invoke('qc:get-batch-files', batchId),
+    onFileDetected: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:file-detected', callback)
+      return () => ipcRenderer.removeListener('qc:file-detected', callback)
+    },
+    onStatusUpdate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:status-update', callback)
+      return () => ipcRenderer.removeListener('qc:status-update', callback)
+    },
+    onQueueUpdate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:queue-update', callback)
+      return () => ipcRenderer.removeListener('qc:queue-update', callback)
+    },
+    onError: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:error', callback)
+      return () => ipcRenderer.removeListener('qc:error', callback)
+    }
+  },
+
+  // Numbering Checker Module APIs
+  numbering: {
+    validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) =>
+      ipcRenderer.invoke('numbering:validate', questionsPath, solutionsPath, expectedCount),
+    validateSingleFile: (filePath: string, expectedCount?: number) =>
+      ipcRenderer.invoke('numbering:validate-single-file', filePath, expectedCount)
+  },
+
+  // Shell and Dialog APIs
+  shell: {
+    openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path)
+  },
+  dialog: {
+    showOpenDialog: (options: any) => ipcRenderer.invoke('dialog:show-open-dialog', options),
+    showSaveDialog: (options: any) => ipcRenderer.invoke('dialog:show-save-dialog', options)
+  },
+  file: {
+    copy: (sourcePath: string, destPath: string) => ipcRenderer.invoke('file:copy', sourcePath, destPath)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -7,7 +7,8 @@ import {
   nativeImage,
   ipcMain,
   globalShortcut,
-  safeStorage
+  safeStorage,
+  dialog
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -27,11 +28,16 @@ import {
   isServerStarting,
   getServerPort
 } from './serverManager'
+import { initializeQCOrchestrator, shutdownQCOrchestrator } from './qc/qcOrchestrator'
+import { registerQCIpcHandlers, unregisterQCIpcHandlers } from './qc/qcIpcHandlers'
+import { registerNumberingIpcHandlers, unregisterNumberingIpcHandlers } from './numberingIpcHandlers'
+
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 const DEFAULT_PORT = 6284
 const TOKEN_FILE = join(app.getPath('userData'), 'auth-token.enc')
+const TOKEN_EXPIRY_DAYS = 7 // Token expires after 7 days
 
 // Handle single instance - prevent multiple instances from running
 const gotTheLock = app.requestSingleInstanceLock()
@@ -164,7 +170,7 @@ function createWindow(): void {
     // Production: load from built files
     // In production, files are in app.asar/dist/renderer/ or out/renderer/
     let rendererPath = join(__dirname, '../renderer/index.html')
-    
+
     // Check if the default path exists
     if (!fs.existsSync(rendererPath)) {
       // Try alternative paths
@@ -174,7 +180,7 @@ function createWindow(): void {
         join(__dirname, '../../dist/renderer/index.html'),
         join(__dirname, '../../out/renderer/index.html')
       ]
-      
+
       for (const altPath of alternatives) {
         if (fs.existsSync(altPath)) {
           rendererPath = altPath
@@ -182,7 +188,7 @@ function createWindow(): void {
         }
       }
     }
-    
+
     console.log('[Main] Loading renderer from file:', rendererPath)
 
     // Check if the file exists before trying to load it
@@ -534,6 +540,15 @@ app.whenReady().then(async () => {
   // Create tray first to ensure it's available
   createTray()
 
+  // Register QC IPC handlers once at startup
+  registerQCIpcHandlers()
+  console.log('[Main] QC IPC handlers registered')
+
+  // Register Numbering Checker IPC handlers
+  registerNumberingIpcHandlers()
+  console.log('[Main] Numbering Checker IPC handlers registered')
+
+
   // Then create window
   createWindow()
 
@@ -554,6 +569,15 @@ app.whenReady().then(async () => {
       console.log('[Main] Step 2: Update check complete')
     } catch (err) {
       console.error('[Main] Step 2: Update check failed:', err)
+    }
+
+    // Step 2.5: Initialize QC orchestrator
+    try {
+      console.log('[Main] Step 2.5: Initializing QC orchestrator...')
+      await initializeQCOrchestrator(mainWindow!)
+      console.log('[Main] Step 2.5: QC orchestrator initialized')
+    } catch (err) {
+      console.error('[Main] Step 2.5: QC orchestrator initialization failed:', err)
     }
 
     // Step 3: Start server (with built-in retry logic)
@@ -585,6 +609,16 @@ app.on('before-quit', async (event) => {
   event.preventDefault()
   console.log('[Main] Stopping server before quit...')
   setQuitting(true)
+
+  // Shutdown QC orchestrator
+  try {
+    console.log('[Main] Shutting down QC orchestrator...')
+    await shutdownQCOrchestrator()
+    console.log('[Main] QC orchestrator shutdown complete')
+  } catch (err) {
+    console.error('[Main] QC orchestrator shutdown failed:', err)
+  }
+
   await stopServer()
 
   // Clean up tray
@@ -604,14 +638,21 @@ app.on('will-quit', async () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll()
 
+  // Unregister QC IPC handlers
+  unregisterQCIpcHandlers()
+
+  // Unregister Numbering Checker IPC handlers
+  unregisterNumberingIpcHandlers()
+
+
   // Ensure server is stopped
   setQuitting(true)
-  
+
   // Final attempt to kill any remaining content-orchestrator processes
   if (process.platform === 'win32') {
     try {
       execSync('taskkill /IM "content-orchestrator.exe" /F', { timeout: 3000 })
-      console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
+      // console.log('[Main] Final cleanup: killed remaining content-orchestrator processes')
     } catch {
       // No processes found or already cleaned up
       console.log('[Main] Final cleanup: no content-orchestrator processes to clean up')
@@ -626,7 +667,7 @@ ipcMain.handle('get-server-info', () => {
     const filePath = path.join(appDataDir, 'TargetPublications', 'target-content', 'last_port.json')
     if (fs.existsSync(filePath)) {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      console.log('[Main] Loaded server info:', data)
+      // console.log('[Main] Loaded server info:', data)
       return data
     } else {
       console.warn('[Main] Server info file not found:', filePath)
@@ -643,17 +684,23 @@ ipcMain.handle('is-server-starting', () => isServerStarting())
 ipcMain.handle('get-app-data-path', () => app.getPath('appData'))
 
 // Auth token management IPC handlers
+// Token is stored as JSON with timestamp: { token: string, storedAt: number }
 ipcMain.handle('store-auth-token', async (_event, token: string) => {
   try {
+    const tokenData = JSON.stringify({
+      token,
+      storedAt: Date.now()
+    })
+
     if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(token)
+      const encrypted = safeStorage.encryptString(tokenData)
       fs.writeFileSync(TOKEN_FILE, encrypted)
-      console.log('[Main] Auth token stored securely')
+      console.log('[Main] Auth token stored securely with timestamp')
     } else {
       // Fallback: store as base64 (less secure but works everywhere)
-      const encoded = Buffer.from(token).toString('base64')
+      const encoded = Buffer.from(tokenData).toString('base64')
       fs.writeFileSync(TOKEN_FILE, encoded)
-      console.log('[Main] Auth token stored (fallback mode)')
+      console.log('[Main] Auth token stored with timestamp (fallback mode)')
     }
   } catch (error) {
     console.error('[Main] Failed to store auth token:', error)
@@ -668,14 +715,41 @@ ipcMain.handle('get-auth-token', async () => {
     }
 
     const data = fs.readFileSync(TOKEN_FILE)
+    let tokenDataStr: string
 
     if (safeStorage.isEncryptionAvailable()) {
-      const decrypted = safeStorage.decryptString(data)
-      return decrypted
+      tokenDataStr = safeStorage.decryptString(data)
     } else {
       // Fallback: decode from base64
-      const decoded = Buffer.from(data.toString(), 'base64').toString('utf-8')
-      return decoded
+      tokenDataStr = Buffer.from(data.toString(), 'base64').toString('utf-8')
+    }
+
+    // Parse token data and check expiry
+    try {
+      const tokenData = JSON.parse(tokenDataStr)
+
+      // Check if token has expired (7 days)
+      const expiryMs = TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const tokenAge = now - tokenData.storedAt
+
+      if (tokenAge > expiryMs) {
+        console.log('[Main] Auth token has expired, clearing...')
+        // Token has expired, clear it
+        if (fs.existsSync(TOKEN_FILE)) {
+          fs.unlinkSync(TOKEN_FILE)
+        }
+        return null
+      }
+
+      return tokenData.token
+    } catch {
+      // Legacy format (just the token string) - treat as expired for migration
+      console.log('[Main] Legacy token format detected, treating as expired')
+      if (fs.existsSync(TOKEN_FILE)) {
+        fs.unlinkSync(TOKEN_FILE)
+      }
+      return null
     }
   } catch (error) {
     console.error('[Main] Failed to get auth token:', error)
@@ -694,3 +768,31 @@ ipcMain.handle('clear-auth-token', async () => {
   }
 })
 ipcMain.handle('get-app-version', () => app.getVersion())
+
+// Shell and dialog IPC handlers
+ipcMain.handle('shell:open-path', async (_, path: string) => {
+  return await shell.openPath(path)
+})
+
+ipcMain.handle('dialog:show-open-dialog', async (_, options: Electron.OpenDialogOptions) => {
+  if (mainWindow) {
+    return await dialog.showOpenDialog(mainWindow, options)
+  }
+  return { canceled: true, filePaths: [] }
+})
+
+ipcMain.handle('dialog:show-save-dialog', async (_, options: Electron.SaveDialogOptions) => {
+  if (mainWindow) {
+    return await dialog.showSaveDialog(mainWindow, options)
+  }
+  return { canceled: true }
+})
+
+ipcMain.handle('file:copy', async (_, sourcePath: string, destPath: string) => {
+  try {
+    await fsPromises.copyFile(sourcePath, destPath)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Copy failed' }
+  }
+})

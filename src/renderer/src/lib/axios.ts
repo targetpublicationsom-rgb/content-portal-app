@@ -38,14 +38,17 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor - handle 401
+// Response interceptor - handle 401 (Unauthorized) and 498 (Token Expired)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401 && !error.config._retry) {
+    const status = error.response?.status
+    // Handle both 401 (Unauthorized) and 498 (Token Expired)
+    if ((status === 401 || status === 498) && !error.config._retry) {
       error.config._retry = true
       // Clear both localStorage and encrypted token
-      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token') // Legacy key
+      localStorage.removeItem('auth_token_data') // New key with timestamp
       localStorage.removeItem('user')
       await window.api.clearAuthToken()
       window.location.hash = '/login'
