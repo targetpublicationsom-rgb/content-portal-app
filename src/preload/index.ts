@@ -102,7 +102,9 @@ const api = {
   // Numbering Checker Module APIs
   numbering: {
     validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) =>
-      ipcRenderer.invoke('numbering:validate', questionsPath, solutionsPath, expectedCount)
+      ipcRenderer.invoke('numbering:validate', questionsPath, solutionsPath, expectedCount),
+    validateSingleFile: (filePath: string, expectedCount?: number) =>
+      ipcRenderer.invoke('numbering:validate-single-file', filePath, expectedCount)
   },
 
   // Shell and Dialog APIs

@@ -89,6 +89,7 @@ interface API {
   }
   numbering: {
     validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) => Promise<any>
+    validateSingleFile: (filePath: string, expectedCount?: number) => Promise<any>
   }
   shell: {
     openPath: (path: string) => Promise<string>

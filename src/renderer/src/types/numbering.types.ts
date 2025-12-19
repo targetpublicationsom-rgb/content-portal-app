@@ -2,5 +2,9 @@
 export type {
     NumberingValidationRequest,
     NumberingValidationResult,
-    NumberingValidationResponse
+    NumberingValidationResponse,
+    SingleFileValidationRequest,
+    SingleFileValidationResult,
+    SingleFileValidationResponse,
+    ContentBlock
 } from '../../../shared/numbering.types'
