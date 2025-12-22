@@ -107,6 +107,12 @@ const api = {
       ipcRenderer.invoke('numbering:validate-single-file', filePath, expectedCount)
   },
 
+  // Docs Formatter Module APIs
+  docsFormatter: {
+    format: (inputPath: string, formatType: number) =>
+      ipcRenderer.invoke('docs-formatter:format', inputPath, formatType)
+  },
+
   // Shell and Dialog APIs
   shell: {
     openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path)
