@@ -31,6 +31,7 @@ import {
 import { initializeQCOrchestrator, shutdownQCOrchestrator } from './qc/qcOrchestrator'
 import { registerQCIpcHandlers, unregisterQCIpcHandlers } from './qc/qcIpcHandlers'
 import { registerNumberingIpcHandlers, unregisterNumberingIpcHandlers } from './numberingIpcHandlers'
+import { registerDocsFormatterIpcHandlers, unregisterDocsFormatterIpcHandlers } from './docsFormatterIpcHandlers'
 
 
 let mainWindow: BrowserWindow | null = null
@@ -548,6 +549,10 @@ app.whenReady().then(async () => {
   registerNumberingIpcHandlers()
   console.log('[Main] Numbering Checker IPC handlers registered')
 
+  // Register Docs Formatter IPC handlers
+  registerDocsFormatterIpcHandlers()
+  console.log('[Main] Docs Formatter IPC handlers registered')
+
 
   // Then create window
   createWindow()
@@ -643,6 +648,9 @@ app.on('will-quit', async () => {
 
   // Unregister Numbering Checker IPC handlers
   unregisterNumberingIpcHandlers()
+
+  // Unregister Docs Formatter IPC handlers
+  unregisterDocsFormatterIpcHandlers()
 
 
   // Ensure server is stopped

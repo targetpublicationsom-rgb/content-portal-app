@@ -91,6 +91,9 @@ interface API {
     validate: (questionsPath: string, solutionsPath: string, expectedCount?: number) => Promise<any>
     validateSingleFile: (filePath: string, expectedCount?: number) => Promise<any>
   }
+  docsFormatter: {
+    format: (inputPath: string, formatType: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>
+  }
   shell: {
     openPath: (path: string) => Promise<string>
   }

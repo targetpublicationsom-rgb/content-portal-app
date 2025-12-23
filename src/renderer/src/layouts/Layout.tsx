@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, LogOut, FileCheck, ListChecks } from 'lucide-react'
+import { LayoutDashboard, LogOut, FileCheck, ListChecks, FileType } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import StatusBar from '../components/StatusBar'
@@ -62,7 +62,8 @@ export default function Layout(): React.JSX.Element {
   const navItems = [
     { path: '/uploader', label: 'Question Uploader', icon: LayoutDashboard },
     { path: '/qc', label: 'QC', icon: FileCheck },
-    { path: '/numbering-checker', label: 'Numbering Checker', icon: ListChecks }
+    { path: '/numbering-checker', label: 'Numbering Checker', icon: ListChecks },
+    { path: '/docs-formatter', label: 'Docs Formatter', icon: FileType }
   ]
 
   return (

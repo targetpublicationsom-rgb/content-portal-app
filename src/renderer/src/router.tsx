@@ -11,6 +11,7 @@ import QCSettings from './components/qc/QCSettings'
 import NumberingChecker from './components/NumberingChecker'
 import UploaderDashboard from './components/uploader/UploaderDashboard'
 import UploaderJobs from './components/uploader/UploaderJobs'
+import DocsFormatter from './components/DocsFormatter'
 
 // Use HashRouter for better Electron compatibility
 export const router = createHashRouter([
@@ -60,6 +61,10 @@ export const router = createHashRouter([
       {
         path: '/numbering-checker',
         element: <NumberingChecker />
+      },
+      {
+        path: '/docs-formatter',
+        element: <DocsFormatter />
       }
     ]
   },
