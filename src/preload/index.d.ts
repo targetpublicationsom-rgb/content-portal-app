@@ -93,6 +93,7 @@ interface API {
   }
   docsFormatter: {
     format: (inputPath: string, formatType: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>
+    restore: (inputPath: string, formatType: number) => Promise<{ success: boolean; outputPath?: string; error?: string }>
   }
   shell: {
     openPath: (path: string) => Promise<string>

@@ -110,7 +110,9 @@ const api = {
   // Docs Formatter Module APIs
   docsFormatter: {
     format: (inputPath: string, formatType: number) =>
-      ipcRenderer.invoke('docs-formatter:format', inputPath, formatType)
+      ipcRenderer.invoke('docs-formatter:format', inputPath, formatType),
+    restore: (inputPath: string, formatType: number) =>
+      ipcRenderer.invoke('docs-formatter:restore', inputPath, formatType)
   },
 
   // Shell and Dialog APIs
