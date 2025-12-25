@@ -54,7 +54,7 @@ async function formatDocx(inputPath: string, formatType: number): Promise<DocsFo
         const tempDir = os.tmpdir()
         const inputBasename = path.basename(inputPath, '.docx')
         const timestamp = Date.now()
-        const outputFilename = `${inputBasename}_formatted_${formatType}section_${timestamp}.docx`
+        const outputFilename = `${inputBasename}_formatted_${formatType === 1 ? '2' : '3'}section_${timestamp}.docx`
         const outputPath = path.join(tempDir, outputFilename)
 
         console.log('[Docs Formatter] Starting formatting...')
