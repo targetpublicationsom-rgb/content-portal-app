@@ -197,7 +197,7 @@ export default function QCFileList(): React.JSX.Element {
   }
 
   const getFileTypeBadge = (
-    fileType: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | null
+    fileType: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | 'subjective' | null
   ): React.JSX.Element => {
     if (!fileType || fileType === 'single-file') {
       return <span className="text-muted-foreground text-xs">—</span>
@@ -212,6 +212,10 @@ export default function QCFileList(): React.JSX.Element {
       'merged-mcqs-solution': {
         label: 'MCQs+Sol (Merged)',
         className: 'bg-purple-100 text-purple-700 border-purple-200'
+      },
+      subjective: {
+        label: 'Subjective',
+        className: 'bg-amber-100 text-amber-700 border-amber-200'
       }
     }
 

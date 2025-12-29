@@ -352,7 +352,125 @@ qc:error               → Error occurred
 
 ---
 
+---
+
+## Supported File Formats
+
+The QC watcher supports three folder formats for organizing content files. Each format has a specific naming convention and processing behavior.
+
+### **1. Two-File Format (`two-file-format/`)**
+
+**Structure:**
+```
+two-file-format/
+  Chapter-Name/
+    ├── Chapter-Name_Theory.docx              → Theory content
+    └── Chapter-Name_MCQs & Solution.docx     → MCQs with solutions combined
+```
+
+**File Type Detected:** `mcqs-solution`
+
+**Processing:**
+- Theory file: Converted to PDF, submitted directly
+- MCQs+Solution file: Converted to PDF, submitted directly
+- No merging or validation required
+- Independent processing (can be submitted at different times)
+
+**Filename Keywords:**
+- Theory: `_theory` or ` theory` (case-insensitive)
+- MCQs: `_mcq`, ` mcq`, `_question`, ` question`
+- Solution: Part of MCQs filename (e.g., contains `solution`, `answer`)
+
+---
+
+### **2. Three-File Format (`three-file-format/`)**
+
+**Structure:**
+```
+three-file-format/
+  Chapter-Name/
+    ├── Chapter-Name_Theory.docx              → Theory content
+    ├── Chapter-Name_MCQs.docx                → Questions only
+    └── Chapter-Name_Solution.docx            → Answers only
+```
+
+**File Type Detected:** `mcqs-solution` (before merge) → `merged-mcqs-solution` (after merge)
+
+**Processing:**
+1. **Numbering Validation**: Questions and Solutions are validated to ensure numbering matches
+   - Status: `VALIDATING` → Checks that question numbers align with solution numbers
+   - If validation fails: Status `NUMBERING_FAILED` (user must fix and retry)
+2. **Merging**: MCQs and Solution files are merged into single file
+   - Status: `MERGING` → Word document processing
+   - Merged file created in `.qc/` folder
+3. **Conversion & Submission**: Merged file converted to PDF and submitted
+
+**Filename Keywords:**
+- Theory: `_theory` or ` theory`
+- MCQs: `_mcq`, ` mcq`, `_question`, ` question`
+- Solution: `_solution`, ` solution`, `_answer`, ` answer`
+
+**Note:** MCQs and Solution files can be uploaded in either order. The system auto-detects and swaps them if reversed.
+
+---
+
+### **3. Subjective Format (`subjective-format/`)**
+
+**Structure:**
+```
+subjective-format/
+  Chapter-Name/
+    └── Chapter-Name_Subjective.docx          → Subjective content
+```
+
+**File Type Detected:** `subjective`
+
+**Processing:**
+- Single file format (similar to two-file MCQs+Solution)
+- **No validation or merging required**
+- File converted to PDF and submitted directly to QC backend
+- Processed independently without waiting for related files
+
+**Filename Keywords:**
+- Subjective: `_subjective` or ` subjective` (case-insensitive)
+
+**Use Case:** Essays, assignments, or other subjective content that doesn't require numbering validation or file merging
+
+---
+
 ## File Structure
+
+### **Folder Layout (Complete)**
+```
+{VITE_QC_WATCH_FOLDER}/
+  ├── two-file-format/
+  │   ├── 01 Chapter/
+  │   │   ├── 01 Chapter_Theory.docx
+  │   │   └── 01 Chapter_MCQs & Solution.docx
+  │   └── 02 Chapter/
+  │       └── ...
+  ├── three-file-format/
+  │   ├── 01 Chapter/
+  │   │   ├── 01 Chapter_Theory.docx
+  │   │   ├── 01 Chapter_MCQs.docx
+  │   │   └── 01 Chapter_Solution.docx
+  │   └── 02 Chapter/
+  │       └── ...
+  ├── subjective-format/
+  │   ├── 01 Chapter/
+  │   │   └── 01 Chapter_Subjective.docx
+  │   └── 02 Chapter/
+  │       └── ...
+  └── .qc/                          (Created automatically)
+      ├── qc.db                     → SQLite database (shared)
+      ├── qc.db-journal             → Temporary during writes
+      ├── report.docx.lock          → Lock file during processing
+      └── pdfs/
+          └── a1b2c3d4/             → First 8 chars of QC ID
+              ├── report.pdf        → Converted PDF
+              ├── qc_report.md      → Markdown report
+              └── qc_report.docx    → DOCX report
+```
 
 ### **.qc Folder (Created Automatically)**
 ```

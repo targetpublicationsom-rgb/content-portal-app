@@ -507,6 +507,7 @@ class QCOrchestrator extends EventEmitter {
       // Create format folders
       const twoFileFormat = path.join(watchFolder, 'two-file format')
       const threeFileFormat = path.join(watchFolder, 'three-file format')
+      const subjectiveFormat = path.join(watchFolder, 'subjective-format')
 
       if (!fsSync.existsSync(twoFileFormat)) {
         fsSync.mkdirSync(twoFileFormat, { recursive: true })
@@ -517,6 +518,11 @@ class QCOrchestrator extends EventEmitter {
         fsSync.mkdirSync(threeFileFormat, { recursive: true })
         console.log(`[QCOrchestrator] Created format folder: ${threeFileFormat}`)
       }
+
+      if (!fsSync.existsSync(subjectiveFormat)) {
+        fsSync.mkdirSync(subjectiveFormat, { recursive: true })
+        console.log(`[QCOrchestrator] Created format folder: ${subjectiveFormat}`)
+      }
     }
   }
 
@@ -526,8 +532,13 @@ class QCOrchestrator extends EventEmitter {
     watcher.on('file-detected', async (event: WatchEvent) => {
       console.log(`[QCOrchestrator] File detected: ${event.filename}`)
 
+      // Handle subjective files as single files - no merge or validation needed
+      if (event.fileType === 'subjective') {
+        console.log(`[QCOrchestrator] Subjective file detected: ${event.chapterName}`)
+        await this.enqueueJob(event.filePath, event.filename, false, event)
+      }
       // Check if this is a folder-based event requiring merge
-      if (
+      else if (
         event.folderPath &&
         event.relatedFiles?.mcqs &&
         event.relatedFiles?.solution &&

@@ -37,7 +37,7 @@ export interface QCRecord {
   // Folder-based processing fields
   folder_path: string | null
   chapter_name: string | null
-  file_type: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | null
+  file_type: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | 'subjective' | null
   source_files: string | null // JSON array of source file names
   // Batch processing fields
   /**

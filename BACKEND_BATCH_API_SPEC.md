@@ -6,6 +6,27 @@ This document specifies the required backend API endpoints for batch QC processi
 
 ---
 
+## Supported File Types
+
+The QC system supports the following content file types in the manifest metadata. The `file_type` field helps backends apply type-specific processing or categorization.
+
+| File Type | Description | Format | Processing |
+|-----------|-------------|--------|------------|
+| `theory` | Theoretical content or textbook chapters | Single file | Standard QC analysis |
+| `mcqs-solution` | Multiple-choice questions with answers combined | Single or merged file | Standard QC analysis |
+| `merged-mcqs-solution` | MCQs and Solutions merged from separate files | Merged file | Standard QC analysis (numbering pre-validated) |
+| `single-file` | Files outside folder structure, treated as standalone | Single file | Standard QC analysis |
+| `subjective` | Essays, assignments, or subjective content | Single file | Standard QC analysis |
+| `null` | File type unknown or not classified | Any | Standard QC analysis |
+
+**Notes:**
+- `file_type` is metadata for classification only—it does not change QC processing logic
+- Backends may use `file_type` for categorizing results, reporting, or analytics
+- `null` values indicate type detection failed; backend should still process the file
+- All types are converted to PDF before submission and require identical QC processing
+
+---
+
 ## Required Endpoints
 
 ### 1. Submit Batch for Processing
@@ -62,7 +83,7 @@ batch-{batch_id}.zip
 {
   "batch_id": "batch-abc123",
   "submitted_at": "2025-12-03T14:30:22.000Z",
-  "file_count": 5,
+  "file_count": 6,
   "files": {
     "qc-abc-001.pdf": {
       "original_name": "Chapter1_Theory.pdf",
@@ -87,7 +108,12 @@ batch-{batch_id}.zip
     "qc-abc-005.pdf": {
       "original_name": "Chapter2_MCQs.pdf",
       "folder": "Maths/02 Relations",
-      "file_type": "merged-mcqs-solution"
+      "file_type": "mcqs-solution"
+    },
+    "qc-abc-006.pdf": {
+      "original_name": "Chapter1_Essay.pdf",
+      "folder": "Essays/01 Introduction",
+      "file_type": "subjective"
     }
   }
 }

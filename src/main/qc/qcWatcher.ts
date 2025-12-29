@@ -10,7 +10,7 @@ export interface WatchEvent {
   // Folder-based metadata
   folderPath?: string
   chapterName?: string
-  fileType?: 'theory' | 'mcqs-solution' | 'single-file'
+  fileType?: 'theory' | 'mcqs-solution' | 'single-file' | 'subjective'
   relatedFiles?: {
     theory?: string
     mcqs?: string
@@ -160,14 +160,15 @@ class QCWatcher extends EventEmitter {
       // File is two or more levels deep - check if in format folder structure
       const formatFolder = pathParts[0].toLowerCase()
       
-      // Only process if in two-file-format or three-file-format folder
+      // Only process if in two-file-format, three-file-format, or subjective-format folder
       if (
         !formatFolder.includes('two-file') &&
         !formatFolder.includes('three-file') &&
         !formatFolder.includes('2-file') &&
-        !formatFolder.includes('3-file')
+        !formatFolder.includes('3-file') &&
+        !formatFolder.includes('subjective')
       ) {
-        console.log(`[QCWatcher] Ignoring file not in two/three-file format folder: ${filename}`)
+        console.log(`[QCWatcher] Ignoring file not in two/three/subjective-file format folder: ${filename}`)
         return
       }
 
@@ -192,7 +193,27 @@ class QCWatcher extends EventEmitter {
     // Determine file type by suffix/keywords
     const fileType = this.detectFileType(filename)
 
-    // Get or create folder tracking
+    // Handle subjective files immediately - they don't need merging or folder stabilization
+    if (fileType === 'subjective') {
+      if (!this.recentlyProcessedFiles.has(filePath)) {
+        console.log(`[QCWatcher] Emitting subjective file: ${filename}`)
+        this.recentlyProcessedFiles.set(filePath, Date.now())
+
+        const subjectiveEvent: WatchEvent = {
+          type: 'add',
+          filePath: filePath,
+          filename: filename,
+          timestamp: new Date().toISOString(),
+          folderPath,
+          chapterName,
+          fileType: 'subjective'
+        }
+        this.emit('file-detected', subjectiveEvent)
+      }
+      return
+    }
+
+    // Get or create folder tracking for other file types
     if (!this.folderContents.has(folderPath)) {
       this.folderContents.set(folderPath, { lastUpdate: Date.now() })
     }
@@ -221,8 +242,13 @@ class QCWatcher extends EventEmitter {
     }, this.FOLDER_STABILIZATION_MS)
   }
 
-  private detectFileType(filename: string): 'theory' | 'mcqs' | 'solution' | 'unknown' {
+  private detectFileType(filename: string): 'theory' | 'mcqs' | 'solution' | 'subjective' | 'unknown' {
     const lowerName = filename.toLowerCase()
+
+    // Check for subjective keywords
+    if (lowerName.includes('_subjective') || lowerName.includes(' subjective')) {
+      return 'subjective'
+    }
 
     // Check for theory keywords
     if (lowerName.includes('_theory') || lowerName.includes(' theory')) {
