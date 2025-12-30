@@ -243,6 +243,11 @@ export default function UploadForm({
       const selectedStream = streams.find((s) => s.id == data.stream)
       formData.append('stream_name', selectedStream?.name || '')
 
+      // Medium
+      formData.append('medium_id', data.medium)
+      const selectedMedium = mediums.find((m) => m.id == data.medium)
+      formData.append('medium_name', selectedMedium?.name || '')
+
       // Standard
       formData.append('standard_id', data.standard)
       const selectedStandard = standards.find((s) => s.id == data.standard)
