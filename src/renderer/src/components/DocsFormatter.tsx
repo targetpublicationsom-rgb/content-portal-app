@@ -116,7 +116,6 @@ export default function DocsFormatter(): React.JSX.Element {
         
         if (copyResult.success) {
           toast.success('File saved successfully!')
-          await window.api.shell.openPath(result.filePath)
         } else {
           toast.error(copyResult.error || 'Failed to save file')
         }
