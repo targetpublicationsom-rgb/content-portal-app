@@ -706,6 +706,22 @@ export default function UploaderJobs(): React.JSX.Element {
                                                                 {job.subject_name || job.standard_name || job.stream_name}
                                                             </span>
                                                         )}
+                                                        {job.question_path && (
+                                                            <span
+                                                                className="text-xs text-muted-foreground break-all"
+                                                                title={job.question_path}
+                                                            >
+                                                                Q: {job.question_path}
+                                                            </span>
+                                                        )}
+                                                        {job.answer_path && (
+                                                            <span
+                                                                className="text-xs text-muted-foreground break-all"
+                                                                title={job.answer_path}
+                                                            >
+                                                                A: {job.answer_path}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>

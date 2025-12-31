@@ -92,6 +92,7 @@ const TagsInput = ({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
+
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
       addTag(inputValue)
@@ -233,8 +234,16 @@ export default function UploadForm({
       formData.append('format', data.fileFormat)
       formData.append('operation', data.operation)
       formData.append('file_question', data.questionFile)
+      const questionPath = (data.questionFile as File & { path?: string })?.path
+      if (questionPath) {
+        formData.append('question_input_path', questionPath)
+      }
       if (data.fileFormat === 'two-file' && data.answerFile) {
         formData.append('file_answer', data.answerFile)
+        const answerPath = (data.answerFile as File & { path?: string })?.path
+        if (answerPath) {
+          formData.append('answer_input_path', answerPath)
+        }
       }
 
       // Add taxonomy fields

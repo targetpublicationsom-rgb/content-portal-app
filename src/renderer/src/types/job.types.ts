@@ -20,6 +20,8 @@ export interface Job {
   subject_name: string | null
   upload_state: 'READY' | 'BLOCKED' | 'UPLOADED'
   upload_receipt_url: string | null
+  question_path: string | null
+  answer_path: string | null
   counts: JobCounts
 }
 
