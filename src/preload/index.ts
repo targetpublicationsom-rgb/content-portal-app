@@ -81,6 +81,8 @@ const api = {
     getBatches: (statusFilter?: string[]) => ipcRenderer.invoke('qc:get-batches', statusFilter),
     retryBatch: (batchId: string) => ipcRenderer.invoke('qc:retry-batch', batchId),
     getBatchFiles: (batchId: string) => ipcRenderer.invoke('qc:get-batch-files', batchId),
+    submitMetadata: (data: { qcId: string; metadata: { standard: string; subject: string; chapter: string } }) =>
+      ipcRenderer.invoke('qc:submit-metadata', data),
     onFileDetected: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:file-detected', callback)
       return () => ipcRenderer.removeListener('qc:file-detected', callback)
@@ -92,6 +94,10 @@ const api = {
     onQueueUpdate: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:queue-update', callback)
       return () => ipcRenderer.removeListener('qc:queue-update', callback)
+    },
+    onMetadataRequired: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('qc:metadata-required', callback)
+      return () => ipcRenderer.removeListener('qc:metadata-required', callback)
     },
     onError: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('qc:error', callback)

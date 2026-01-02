@@ -185,6 +185,28 @@ export async function initializeQCDatabase(): Promise<void> {
         await execAsync('CREATE INDEX IF NOT EXISTS idx_history_qc_id ON qc_batch_history(qc_id)')
         await execAsync('CREATE INDEX IF NOT EXISTS idx_history_batch_id ON qc_batch_history(batch_id)')
 
+        // Migration: Add metadata columns if they don't exist
+        try {
+          await execAsync('ALTER TABLE qc_records ADD COLUMN standard TEXT')
+          console.log('[QCStateManager] Added column: standard')
+        } catch {
+          // Column already exists, ignore
+        }
+
+        try {
+          await execAsync('ALTER TABLE qc_records ADD COLUMN subject TEXT')
+          console.log('[QCStateManager] Added column: subject')
+        } catch {
+          // Column already exists, ignore
+        }
+
+        try {
+          await execAsync('ALTER TABLE qc_records ADD COLUMN chapter_metadata TEXT')
+          console.log('[QCStateManager] Added column: chapter_metadata')
+        } catch {
+          // Column already exists, ignore
+        }
+
         console.log('[QCStateManager] Database initialized')
         resolve()
       } catch (error) {
@@ -199,7 +221,7 @@ export async function createQCRecord(
   filePath: string,
   folderPath?: string,
   chapterName?: string,
-  fileType?: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
+  fileType?: 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | 'subjective',
   sourceFiles?: string[]
 ): Promise<QCRecord> {
   if (!db) throw new Error('Database not initialized')
@@ -233,7 +255,10 @@ export async function createQCRecord(
     source_files: sourceFiles ? JSON.stringify(sourceFiles) : null,
     batch_id: null,
     original_batch_id: null,
-    batch_submission_order: null
+    batch_submission_order: null,
+    standard: null,
+    subject: null,
+    chapter_metadata: null
   }
 
   await runAsync(
@@ -364,6 +389,24 @@ export async function updateQCRecord(qcId: string, updates: Partial<QCRecord>): 
 
   await runAsync(`UPDATE qc_records SET ${setClause} WHERE qc_id = ?`, [...values, qcId])
 }
+
+// Update QC record metadata (for subjective files)
+export async function updateQCMetadata(
+  qcId: string,
+  metadata: { standard: string; subject: string; chapter: string }
+): Promise<void> {
+  if (!db) throw new Error('Database not initialized')
+
+  await runAsync(
+    'UPDATE qc_records SET standard = ?, subject = ?, chapter_metadata = ? WHERE qc_id = ?',
+    [metadata.standard, metadata.subject, metadata.chapter, qcId]
+  )
+
+  console.log(
+    `[QCStateManager] Updated ${qcId} with metadata (Standard: ${metadata.standard}, Subject: ${metadata.subject}, Chapter: ${metadata.chapter})`
+  )
+}
+
 
 // Get a single QC record
 export async function getQCRecord(qcId: string): Promise<QCRecord | null> {

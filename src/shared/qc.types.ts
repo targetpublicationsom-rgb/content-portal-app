@@ -2,6 +2,7 @@
 
 export type QCStatus =
   | 'QUEUED'
+  | 'PENDING_METADATA' // Waiting for user to provide Standard/Subject/Chapter metadata (subjective files only)
   | 'VALIDATING' // Checking numbering for MCQs+Solution
   | 'MERGING' // Merging MCQs and Solution files
   | 'CONVERTING'
@@ -56,6 +57,10 @@ export interface QCRecord {
    */
   original_batch_id: string | null
   batch_submission_order: number | null
+  // Metadata fields (for subjective files)
+  standard: string | null // e.g., "Class 11", "Class 12"
+  subject: string | null // e.g., "Physics", "Chemistry"
+  chapter_metadata: string | null // e.g., "Rotational Dynamics"
 }
 
 export interface QCConfig {
@@ -134,6 +139,9 @@ export interface BatchManifest {
       original_name: string
       folder: string | null
       file_type: string | null
+      standard: string | null
+      subject: string | null
+      chapter_metadata: string | null
     }
   }
 }

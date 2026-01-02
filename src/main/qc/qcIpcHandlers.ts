@@ -440,6 +440,37 @@ export function registerQCIpcHandlers(): void {
     }
   })
 
+  // Submit metadata for subjective files
+  ipcMain.handle(
+    'qc:submit-metadata',
+    async (_event, { qcId, metadata }: { qcId: string; metadata: { standard: string; subject: string; chapter: string } }) => {
+      try {
+        console.log(`[QC IPC] Submitting metadata for record: ${qcId}`)
+
+        // Validate metadata
+        if (!metadata.standard || !metadata.subject || !metadata.chapter) {
+          return { success: false, error: 'All metadata fields are required' }
+        }
+
+        // Import updateQCMetadata
+        const { updateQCMetadata } = await import('./qcStateManager')
+
+        // Save metadata to database
+        await updateQCMetadata(qcId, metadata)
+
+        // Resume processing
+        const orchestrator = getQCOrchestrator()
+        await orchestrator.resumeSubjectiveJob(qcId)
+
+        return { success: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to submit metadata'
+        console.error('[QC IPC] Error submitting metadata:', error)
+        return { success: false, error: message }
+      }
+    }
+  )
+
   console.log('[QC IPC] Handlers registered')
 }
 
@@ -463,6 +494,7 @@ export function unregisterQCIpcHandlers(): void {
   ipcMain.removeHandler('qc:get-batch-files')
   ipcMain.removeHandler('qc:add-watch-folder')
   ipcMain.removeHandler('qc:remove-watch-folder')
+  ipcMain.removeHandler('qc:submit-metadata')
 
   console.log('[QC IPC] Handlers unregistered')
 }

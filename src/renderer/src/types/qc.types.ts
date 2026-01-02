@@ -2,6 +2,7 @@
 
 export type QCStatus =
   | 'QUEUED' // File detected, waiting in conversion queue
+  | 'PENDING_METADATA' // Waiting for user to provide Standard/Subject/Chapter metadata (subjective files only)
   | 'VALIDATING' // Checking numbering for MCQs+Solution
   | 'MERGING' // Merging MCQs and Solution files
   | 'CONVERTING' // Converting DOCX to PDF

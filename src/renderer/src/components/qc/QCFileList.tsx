@@ -19,6 +19,7 @@ import {
 import { qcService } from '../../services/qc.service'
 import type { QCRecord, QCStatus, QCFilters } from '../../types/qc.types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
+import MetadataModal from './MetadataModal'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import 'katex/dist/katex.min.css'
@@ -37,6 +38,14 @@ export default function QCFileList(): React.JSX.Element {
   const [markdownContent, setMarkdownContent] = useState('')
   const [markdownTitle, setMarkdownTitle] = useState('')
   const [loadingMarkdown, setLoadingMarkdown] = useState(false)
+
+  // Metadata modal state
+  const [showMetadataModal, setShowMetadataModal] = useState(false)
+  const [metadataRequest, setMetadataRequest] = useState<{
+    qcId: string
+    filename: string
+    chapterName?: string
+  } | null>(null)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -174,6 +183,7 @@ export default function QCFileList(): React.JSX.Element {
   const getStatusBadge = (status: QCStatus): React.JSX.Element => {
     const variants: Record<QCStatus, { className: string; label: string }> = {
       QUEUED: { className: 'bg-gray-500', label: 'Queued' },
+      PENDING_METADATA: { className: 'bg-pink-500', label: 'Pending Metadata' },
       VALIDATING: { className: 'bg-cyan-500', label: 'Validating' },
       MERGING: { className: 'bg-teal-500', label: 'Merging Files' },
       CONVERTING: { className: 'bg-indigo-500', label: 'Converting' },
@@ -387,6 +397,27 @@ export default function QCFileList(): React.JSX.Element {
     setCurrentPage(1) // Reset to first page on page size change
   }
 
+  const handleMetadataSubmit = async (metadata: { standard: string; subject: string; chapter: string }) => {
+    if (!metadataRequest) return
+
+    try {
+      await qcService.submitMetadata(metadataRequest.qcId, metadata)
+      setShowMetadataModal(false)
+      setMetadataRequest(null)
+      // Reload records to show updated status
+      loadRecords()
+    } catch (err) {
+      console.error('Failed to submit metadata:', err)
+      setError(err instanceof Error ? err.message : 'Failed to submit metadata')
+    }
+  }
+
+  const handleMetadataCancel = () => {
+    // Just close the modal, keep the file in PENDING_METADATA state
+    setShowMetadataModal(false)
+    setMetadataRequest(null)
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* Navigation Tabs */}
@@ -490,7 +521,7 @@ export default function QCFileList(): React.JSX.Element {
                   <TableHead className="w-[25%]">Filename</TableHead>
                   <TableHead className="w-[15%] hidden xl:table-cell">Chapter</TableHead>
                   <TableHead className="w-[10%] hidden lg:table-cell">Type</TableHead>
-                  <TableHead className="w-[13%]">Status</TableHead>
+                  <TableHead className="w-[14%]">Status</TableHead>
                   <TableHead className="w-[8%] text-center">Issues</TableHead>
                   <TableHead className="w-[12%] hidden lg:table-cell">Processed By</TableHead>
                   <TableHead className="w-[10%] hidden md:table-cell">Submitted</TableHead>
@@ -549,6 +580,24 @@ export default function QCFileList(): React.JSX.Element {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
+                          {record.status === 'PENDING_METADATA' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                                setMetadataRequest({
+                                  qcId: record.qc_id,
+                                  filename: record.original_name,
+                                  chapterName: record.chapter_name || undefined
+                                })
+                                setShowMetadataModal(true)
+                              }}
+                              title="Add metadata"
+                            >
+                              Add Metadata
+                            </Button>
+                          )}
                           {(record.status === 'CONVERSION_FAILED' ||
                             record.status === 'FAILED' ||
                             record.status === 'NUMBERING_FAILED') && (
@@ -690,6 +739,18 @@ export default function QCFileList(): React.JSX.Element {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Metadata Modal */}
+      {metadataRequest && (
+        <MetadataModal
+          isOpen={showMetadataModal}
+          qcId={metadataRequest.qcId}
+          filename={metadataRequest.filename}
+          chapterName={metadataRequest.chapterName}
+          onSubmit={handleMetadataSubmit}
+          onCancel={handleMetadataCancel}
+        />
+      )}
     </div>
   )
 }

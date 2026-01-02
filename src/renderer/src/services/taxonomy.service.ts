@@ -92,3 +92,20 @@ export const fetchEditions = async (subjectId: string): Promise<TaxonomyOption[]
   console.log(data)
   return data.data || []
 }
+
+/**
+ * Fetch chapters based on subject
+ * Requires subject ID to be provided
+ */
+export const fetchChapters = async (subjectId: string): Promise<TaxonomyOption[]> => {
+  if (!subjectId) {
+    return []
+  }
+
+  const { data } = await api.get<TaxonomyResponse>('/chapters', {
+    params: {
+      subject_id: subjectId
+    }
+  })
+  return data.data || []
+}

@@ -82,6 +82,9 @@ class QCOrchestrator extends EventEmitter {
     originalName: string
     folderPath: string | null
     fileType: string | null
+    standard: string | null
+    subject: string | null
+    chapterMetadata: string | null
   }> = []
   private batchTimeoutTimer: NodeJS.Timeout | null = null
   private isBatchProcessing = false
@@ -842,10 +845,31 @@ class QCOrchestrator extends EventEmitter {
           filePath,
           folderPath,
           event?.chapterName,
-          fileType as 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file',
+          fileType as 'theory' | 'mcqs-solution' | 'merged-mcqs-solution' | 'single-file' | 'subjective',
           sourceFiles
         )
         recordId = record.qc_id
+
+        // Check if this is a subjective file - if so, pause for metadata collection
+        if (fileType === 'subjective') {
+          await updateQCStatus(record.qc_id, 'PENDING_METADATA')
+
+          // Emit event to show metadata modal
+          this.emitToRenderer('qc:metadata-required', {
+            qcId: record.qc_id,
+            filename,
+            chapterName: event?.chapterName
+          })
+
+          // Emit to renderer so UI updates immediately
+          this.emitToRenderer('qc:file-detected', { record: { ...record, status: 'PENDING_METADATA' } })
+
+          console.log(`[QCOrchestrator] Subjective file waiting for metadata: ${filename}`)
+
+          // Don't add to job queue yet - wait for metadata submission
+          return
+        }
+
         await updateQCStatus(record.qc_id, 'QUEUED')
 
         // Emit to renderer so UI updates immediately
@@ -959,6 +983,30 @@ class QCOrchestrator extends EventEmitter {
     }
   }
 
+  // Resume subjective job after metadata is submitted
+  async resumeSubjectiveJob(qcId: string): Promise<void> {
+    const record = await getQCRecord(qcId)
+    if (!record) {
+      throw new Error('Record not found')
+    }
+
+    console.log(`[QCOrchestrator] Resuming subjective job: ${record.original_name}`)
+
+    // Transition to QUEUED
+    await updateQCStatus(qcId, 'QUEUED')
+    this.emitToRenderer('qc:status-update', { qcId, status: 'QUEUED' })
+
+    // Add to job queue for processing
+    await this.enqueueJob(
+      record.file_path,
+      record.original_name,
+      true, // isRetry = true to bypass duplicate checks
+      undefined,
+      qcId
+    )
+  }
+
+
   // @ts-ignore - Reserved for future use
   private async waitForJobCompletion(qcId: string, filename: string): Promise<void> {
     // Wait until the job reaches COMPLETED or FAILED status
@@ -1067,7 +1115,10 @@ class QCOrchestrator extends EventEmitter {
         filename,
         record.original_name,
         record.folder_path,
-        record.file_type
+        record.file_type,
+        record.standard,
+        record.subject,
+        record.chapter_metadata
       )
 
       // Check if batch should be submitted now
@@ -1148,7 +1199,10 @@ class QCOrchestrator extends EventEmitter {
     filename: string,
     originalName: string,
     folderPath: string | null,
-    fileType: string | null
+    fileType: string | null,
+    standard: string | null = null,
+    subject: string | null = null,
+    chapterMetadata: string | null = null
   ): Promise<void> {
     // Check for duplicates - prevent same qcId from being added twice
     const alreadyInBatch = this.convertedPdfBatch.some((item) => item.qcId === qcId)
@@ -1167,7 +1221,10 @@ class QCOrchestrator extends EventEmitter {
       filename,
       originalName,
       folderPath,
-      fileType
+      fileType,
+      standard,
+      subject,
+      chapterMetadata
     })
 
     // Start batch timeout timer on first file
@@ -1303,6 +1360,9 @@ class QCOrchestrator extends EventEmitter {
       originalName: string
       folderPath: string | null
       fileType: string | null
+      standard: string | null
+      subject: string | null
+      chapterMetadata: string | null
     }>
   ): Promise<void> {
     const batchId = uuidv4()
@@ -1586,6 +1646,9 @@ class QCOrchestrator extends EventEmitter {
       originalName: string
       folderPath: string | null
       fileType: string | null
+      standard: string | null
+      subject: string | null
+      chapterMetadata: string | null
     }>,
     zipPath: string
   ): Promise<void> {
@@ -1610,7 +1673,10 @@ class QCOrchestrator extends EventEmitter {
       manifest.files[pdfFilename] = {
         original_name: file.originalName,
         folder: file.folderPath,
-        file_type: file.fileType
+        file_type: file.fileType,
+        standard: file.standard,
+        subject: file.subject,
+        chapter_metadata: file.chapterMetadata
       }
     }
 
@@ -2130,7 +2196,10 @@ class QCOrchestrator extends EventEmitter {
       record.original_name,
       record.original_name,
       record.folder_path,
-      record.file_type
+      record.file_type,
+      record.standard,
+      record.subject,
+      record.chapter_metadata
     )
 
     // Check if batch should be submitted
@@ -2187,6 +2256,9 @@ class QCOrchestrator extends EventEmitter {
         originalName: string
         folderPath: string | null
         fileType: string | null
+        standard: string | null
+        subject: string | null
+        chapterMetadata: string | null
       }> = []
 
       for (const record of failedRecords) {
@@ -2255,7 +2327,10 @@ class QCOrchestrator extends EventEmitter {
           filename: record.original_name,
           originalName: record.original_name,
           folderPath: record.folder_path,
-          fileType: record.file_type
+          fileType: record.file_type,
+          standard: record.standard,
+          subject: record.subject,
+          chapterMetadata: record.chapter_metadata
         })
 
         // Mark as being retried (lock)

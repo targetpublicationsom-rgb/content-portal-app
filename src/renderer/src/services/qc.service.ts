@@ -161,6 +161,13 @@ export const qcService = {
     return response.data || []
   },
 
+  async submitMetadata(qcId: string, metadata: { standard: string; subject: string; chapter: string }): Promise<void> {
+    const response = (await window.api.qc.submitMetadata({ qcId, metadata })) as APIResponse<void>
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to submit metadata')
+    }
+  },
+
   onFileDetected(callback: (data: any) => void): () => void {
     return window.api.qc.onFileDetected((_event, data) => callback(data))
   },
@@ -171,6 +178,10 @@ export const qcService = {
 
   onQueueUpdate(callback: (data: { queueLength: number }) => void): () => void {
     return window.api.qc.onQueueUpdate((_event, data) => callback(data))
+  },
+
+  onMetadataRequired(callback: (data: { qcId: string; filename: string; chapterName?: string }) => void): () => void {
+    return window.api.qc.onMetadataRequired((_event, data) => callback(data))
   },
 
   onError(callback: (data: { message: string }) => void): () => void {
