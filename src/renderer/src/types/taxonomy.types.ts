@@ -1,6 +1,7 @@
 export interface TaxonomyOption {
   id: string
   name: string
+  name_alias?: string
 }
 
 export interface TaxonomyFilters {

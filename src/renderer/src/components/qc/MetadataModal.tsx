@@ -122,13 +122,13 @@ export default function MetadataModal({
   const isSubmitDisabled = !selectedStandard || !selectedSubject || !selectedChapter || loading
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()} >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add Metadata for Subjective File</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto overflow-x-visible">
           {/* File Info */}
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
@@ -161,10 +161,10 @@ export default function MetadataModal({
               <SelectTrigger id="standard" className="w-full">
                 <SelectValue placeholder="Select Standard" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent sideOffset={5} collisionPadding={20} className="max-h-[300px]">
                 {standards.map((standard) => (
                   <SelectItem key={standard.id} value={standard.id}>
-                    {standard.name}
+                    {standard.name_alias}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -184,7 +184,7 @@ export default function MetadataModal({
               <SelectTrigger id="subject" className="w-full">
                 <SelectValue placeholder="Select Subject" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent sideOffset={5} collisionPadding={20} className="max-h-[300px]">
                 {subjects.map((subject) => (
                   <SelectItem key={subject.id} value={subject.id}>
                     {subject.name}
@@ -207,7 +207,7 @@ export default function MetadataModal({
               <SelectTrigger id="chapter" className="w-full">
                 <SelectValue placeholder="Select Chapter" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent sideOffset={5} collisionPadding={20} className="max-h-[300px]">
                 {chapters.map((chapter) => (
                   <SelectItem key={chapter.id} value={chapter.id}>
                     {chapter.name}
