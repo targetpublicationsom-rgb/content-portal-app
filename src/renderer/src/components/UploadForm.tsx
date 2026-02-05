@@ -15,11 +15,11 @@ import { createJob } from '../services'
 
 const formSchema = z
   .object({
-    stream: z.string().min(1, 'Stream is required'),
+    stream: z.string().optional(),
     board: z.string().optional(),
-    medium: z.string().min(1, 'Medium is required'),
-    standard: z.string().min(1, 'Standard is required'),
-    subject: z.string().min(1, 'Subject is required'),
+    medium: z.string().optional(),
+    standard: z.string().optional(),
+    subject: z.string().optional(),
     fileFormat: z.enum(['single', 'two-file']).describe('Please select a file format'),
     operation: z.enum(['insert', 'update']),
     tags: z.array(z.string()).optional(),
@@ -42,6 +42,37 @@ const formSchema = z
       .optional()
   })
   .superRefine((data, ctx) => {
+    if (data.operation === 'insert') {
+      if (!data.stream) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Stream is required',
+          path: ['stream']
+        })
+      }
+      if (!data.medium) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Medium is required',
+          path: ['medium']
+        })
+      }
+      if (!data.standard) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Standard is required',
+          path: ['standard']
+        })
+      }
+      if (!data.subject) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Subject is required',
+          path: ['subject']
+        })
+      }
+    }
+
     if (data.fileFormat === 'two-file' && !data.answerFile) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -248,22 +279,22 @@ export default function UploadForm({
 
       // Add taxonomy fields
       // Stream
-      formData.append('stream_id', data.stream)
+      formData.append('stream_id', data.stream || '')
       const selectedStream = streams.find((s) => s.id == data.stream)
       formData.append('stream_name', selectedStream?.name || '')
 
       // Medium
-      formData.append('medium_id', data.medium)
+      formData.append('medium_id', data.medium || '')
       const selectedMedium = mediums.find((m) => m.id == data.medium)
       formData.append('medium_name', selectedMedium?.name || '')
 
       // Standard
-      formData.append('standard_id', data.standard)
+      formData.append('standard_id', data.standard || '')
       const selectedStandard = standards.find((s) => s.id == data.standard)
       formData.append('standard_name', selectedStandard?.name || '')
 
       // Subject
-      formData.append('subject_id', data.subject)
+      formData.append('subject_id', data.subject || '')
       const selectedSubject = subjects.find((s) => s.id == data.subject)
       formData.append('subject_name', selectedSubject?.name || '')
 
@@ -320,15 +351,72 @@ export default function UploadForm({
         <CardContent className="flex-1 overflow-y-auto mt-3">
           <Form {...form}>
             <form id="uploadForm" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <FormField
+                    name="operation"
+                    control={form.control}
+                    render={({ field }) => (
+                      <FormItem className="space-y-3 p-4 border rounded-md">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Operation Mode *
+                        </span>
+                        <div className="flex gap-4">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id="insert"
+                              value="insert"
+                              className="h-4 w-4"
+                              checked={field.value === 'insert'}
+                              onChange={() => field.onChange('insert')}
+                            />
+                            <label
+                              htmlFor="insert"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Insert (New Questions)
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id="update"
+                              value="update"
+                              className="h-4 w-4"
+                              checked={field.value === 'update'}
+                              onChange={() => {
+                                field.onChange('update')
+                                // Force single file format when switching to update
+                                form.setValue('fileFormat', 'single')
+                              }}
+                            />
+                            <label
+                              htmlFor="update"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Update (Existing Questions)
+                            </label>
+                          </div>
+                        </div>
+                        {field.value === 'update' && (
+                          <p className="text-xs text-muted-foreground">
+                            Update mode processes questions with question ID markers for existing
+                            database entries. Metadata fields below are optional.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="stream"
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1">
                         <span className="text-sm font-medium text-muted-foreground mb-1.5">
-                          Stream *
+                          Stream {form.watch('operation') === 'insert' && '*'}
                         </span>
                         <div className="space-y-1">
                           <Select
@@ -413,7 +501,7 @@ export default function UploadForm({
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1">
                         <span className="text-sm font-medium text-muted-foreground mb-1.5">
-                          Medium *
+                          Medium {form.watch('operation') === 'insert' && '*'}
                         </span>
                         <div className="space-y-1">
                           <Select
@@ -457,9 +545,9 @@ export default function UploadForm({
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1">
                         <span className="text-sm font-medium text-muted-foreground mb-1.5">
-                          Standard *
+                          Standard {form.watch('operation') === 'insert' && '*'}
                         </span>
-                        <div className="space-y-1">
+                         <div className="space-y-1">
                           <Select
                             value={field.value}
                             onValueChange={field.onChange}
@@ -507,7 +595,7 @@ export default function UploadForm({
                     render={({ field }) => (
                       <FormItem className="flex flex-col space-y-1">
                         <span className="text-sm font-medium text-muted-foreground mb-1.5">
-                          Subject *
+                          Subject {form.watch('operation') === 'insert' && '*'}
                         </span>
                         <div className="space-y-1">
                           <Select
@@ -635,13 +723,18 @@ export default function UploadForm({
                             value="two-file"
                             className="h-4 w-4"
                             checked={field.value === 'two-file'}
+                            disabled={form.watch('operation') === 'update'}
                             onChange={() => field.onChange('two-file')}
                           />
                           <label
                             htmlFor="two-file"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            className={`text-sm font-medium leading-none ${
+                              form.watch('operation') === 'update'
+                                ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                                : 'peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                            }`}
                           >
-                            Two Files
+                            Two Files {form.watch('operation') === 'update' && '(N/A for Update)'}
                           </label>
                         </div>
                       </div>
@@ -650,59 +743,7 @@ export default function UploadForm({
                   )}
                 />
 
-                {/* Operation Mode - Only shown for single file format */}
-                {form.watch('fileFormat') === 'single' && (
-                  <FormField
-                    name="operation"
-                    control={form.control}
-                    render={({ field }) => (
-                      <FormItem className="space-y-3">
-                        <span className="text-sm font-medium text-muted-foreground">
-                          Operation Mode *
-                        </span>
-                        <div className="flex gap-4">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="radio"
-                              id="insert"
-                              value="insert"
-                              className="h-4 w-4"
-                              checked={field.value === 'insert'}
-                              onChange={() => field.onChange('insert')}
-                            />
-                            <label
-                              htmlFor="insert"
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                              Insert (New Questions)
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="radio"
-                              id="update"
-                              value="update"
-                              className="h-4 w-4"
-                              checked={field.value === 'update'}
-                              onChange={() => field.onChange('update')}
-                            />
-                            <label
-                              htmlFor="update"
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                              Update (Existing Questions)
-                            </label>
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Update mode processes questions with question ID markers for existing
-                          database entries.
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
+
 
                 <div className="flex flex-col gap-x-4 gap-y-6">
                   <FormField
