@@ -6,7 +6,7 @@ export interface JobCounts {
 
 export interface Job {
   job_id: string
-  mode: 'single' | 'two-file'
+  mode: 'single' | 'two-file' | 'marker'
   state: 'DONE' | 'FAILED' | 'RUNNING'
   gate_passed: boolean
   created_at: string
@@ -44,7 +44,7 @@ export interface Stage {
 
 export interface JobDetails {
   job_id: string
-  format: 'single' | 'two-file'
+  format: 'single' | 'two-file' | 'marker'
   state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   gate_passed: boolean
   gate_report_url: string
@@ -63,7 +63,7 @@ export interface JobDetails {
 
 export interface JobStatus {
   job_id: string
-  format: 'single' | 'two-file'
+  format: 'single' | 'two-file' | 'marker'
   state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   gate_passed?: boolean
   gate_report_url?: string

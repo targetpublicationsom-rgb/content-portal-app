@@ -20,7 +20,7 @@ const formSchema = z
     medium: z.string().optional(),
     standard: z.string().optional(),
     subject: z.string().optional(),
-    fileFormat: z.enum(['single', 'two-file']).describe('Please select a file format'),
+    fileFormat: z.enum(['single', 'two-file', 'marker']).describe('Please select a file format'),
     operation: z.enum(['insert', 'update']),
     tags: z.array(z.string()).optional(),
     editionId: z.string().optional(),
@@ -735,6 +735,27 @@ export default function UploadForm({
                             }`}
                           >
                             Two Files {form.watch('operation') === 'update' && '(N/A for Update)'}
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            id="marker"
+                            value="marker"
+                            className="h-4 w-4"
+                            checked={field.value === 'marker'}
+                            disabled={form.watch('operation') === 'update'}
+                            onChange={() => field.onChange('marker')}
+                          />
+                          <label
+                            htmlFor="marker"
+                            className={`text-sm font-medium leading-none ${
+                              form.watch('operation') === 'update'
+                                ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                                : 'peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                            }`}
+                          >
+                            Marker {form.watch('operation') === 'update' && '(N/A for Update)'}
                           </label>
                         </div>
                       </div>

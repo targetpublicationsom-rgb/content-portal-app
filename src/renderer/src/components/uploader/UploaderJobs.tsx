@@ -445,6 +445,7 @@ export default function UploaderJobs(): React.JSX.Element {
                                             <SelectItem value="all">All Formats</SelectItem>
                                             <SelectItem value="single">Single File</SelectItem>
                                             <SelectItem value="two-file">Two Files</SelectItem>
+                                            <SelectItem value="marker">Marker</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
