@@ -6,6 +6,7 @@ import {
   fetchMediums,
   fetchStandards,
   fetchSubjects,
+  fetchChapters,
   fetchEditions
 } from '../services/taxonomy.service'
 
@@ -21,11 +22,13 @@ export const useTaxonomyData = (): {
   mediums: TaxonomyOption[]
   standards: TaxonomyOption[]
   subjects: TaxonomyOption[]
+  chapters: TaxonomyOption[]
   editions: TaxonomyOption[]
   loadingOptions: LoadingOptions
   // boardId is optional now — standards can be fetched using stream + medium alone
   loadStandards: (streamId: string, boardId: string | undefined, mediumId: string) => Promise<void>
   loadSubjects: (standardId: string) => Promise<void>
+  loadChapters: (subjectId: string) => Promise<void>
   loadEditions: (subjectId: string) => Promise<void>
 } => {
   const [streams, setStreams] = useState<TaxonomyOption[]>([])
@@ -33,6 +36,7 @@ export const useTaxonomyData = (): {
   const [mediums, setMediums] = useState<TaxonomyOption[]>([])
   const [standards, setStandards] = useState<TaxonomyOption[]>([])
   const [subjects, setSubjects] = useState<TaxonomyOption[]>([])
+  const [chapters, setChapters] = useState<TaxonomyOption[]>([])
   const [editions, setEditions] = useState<TaxonomyOption[]>([])
 
 
@@ -42,6 +46,7 @@ export const useTaxonomyData = (): {
     mediums: false,
     standards: false,
     subjects: false,
+    chapters: false,
     editions: false
   })
 
@@ -133,6 +138,27 @@ export const useTaxonomyData = (): {
   }, [])
 
   /**
+   * Fetch chapters based on selected subject
+   */
+  const loadChapters = useCallback(async (subjectId: string): Promise<void> => {
+    if (!subjectId || subjectId === 'all') {
+      setChapters([])
+      return
+    }
+
+    try {
+      setLoadingOptions((prev) => ({ ...prev, chapters: true }))
+      const chaptersData = await fetchChapters(subjectId)
+      setChapters(chaptersData)
+    } catch {
+      // Handle fetch error silently
+      setChapters([])
+    } finally {
+      setLoadingOptions((prev) => ({ ...prev, chapters: false }))
+    }
+  }, [])
+
+  /**
    * Fetch Editions based on selected standard
    */
   const loadEditions = useCallback(async (subjectId: string): Promise<void> => {
@@ -159,10 +185,12 @@ export const useTaxonomyData = (): {
     mediums,
     standards,
     subjects,
+    chapters,
     editions,
     loadingOptions,
     loadStandards,
     loadSubjects,
+    loadChapters,
     loadEditions
   }
 }

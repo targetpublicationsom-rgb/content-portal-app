@@ -20,6 +20,7 @@ const formSchema = z
     medium: z.string().optional(),
     standard: z.string().optional(),
     subject: z.string().optional(),
+    chapter: z.string().optional(),
     fileFormat: z.enum(['single', 'two-file', 'marker']).describe('Please select a file format'),
     operation: z.enum(['insert', 'update']),
     tags: z.array(z.string()).optional(),
@@ -71,6 +72,14 @@ const formSchema = z
           path: ['subject']
         })
       }
+    }
+
+    if (data.fileFormat === 'marker' && !data.chapter) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Chapter is required for Marker format',
+        path: ['chapter']
+      })
     }
 
     if (data.fileFormat === 'two-file' && !data.answerFile) {
@@ -182,6 +191,7 @@ export default function UploadForm({
       medium: '',
       standard: '',
       subject: '',
+      chapter: '',
       fileFormat: 'single',
       operation: 'insert',
       questionFile: undefined,
@@ -198,10 +208,12 @@ export default function UploadForm({
     mediums,
     standards,
     subjects,
+    chapters,
     editions,
     loadingOptions,
     loadStandards,
     loadSubjects,
+    loadChapters,
     loadEditions
   } = useTaxonomyData()
 
@@ -252,9 +264,10 @@ export default function UploadForm({
 
   useEffect(() => {
     if (subjectValue) {
+      loadChapters(subjectValue)
       loadEditions(subjectValue)
     }
-  }, [subjectValue, loadEditions])
+  }, [subjectValue, loadChapters, loadEditions])
 
   const onSubmit = async (data: FormValues): Promise<void> => {
     try {
@@ -297,6 +310,13 @@ export default function UploadForm({
       formData.append('subject_id', data.subject || '')
       const selectedSubject = subjects.find((s) => s.id == data.subject)
       formData.append('subject_name', selectedSubject?.name || '')
+
+      // Chapter
+      if (data.chapter) {
+        formData.append('chapter_id', data.chapter)
+        const selectedChapter = chapters.find((c) => c.id == data.chapter)
+        formData.append('chapter_name', selectedChapter?.name || '')
+      }
 
       // Add optional fields
       if (data.tags && data.tags.length > 0) {
@@ -431,6 +451,7 @@ export default function UploadForm({
                                 field.onChange('')
                                 form.setValue('standard', '')
                                 form.setValue('subject', '')
+                                form.setValue('chapter', '')
                                 form.setValue('editionId', '')
                               }}
                             >
@@ -516,6 +537,7 @@ export default function UploadForm({
                                 field.onChange('')
                                 form.setValue('standard', '')
                                 form.setValue('subject', '')
+                                form.setValue('chapter', '')
                                 form.setValue('editionId', '')
                               }}
                             >
@@ -563,6 +585,7 @@ export default function UploadForm({
                               onClear={() => {
                                 field.onChange('')
                                 form.setValue('subject', '')
+                                form.setValue('chapter', '')
                                 form.setValue('editionId', '')
                               }}
                             >
@@ -608,6 +631,7 @@ export default function UploadForm({
                               showClear={!!field.value}
                               onClear={() => {
                                 field.onChange('')
+                                form.setValue('chapter', '')
                                 form.setValue('editionId', '')
                               }}
                             >
@@ -627,6 +651,54 @@ export default function UploadForm({
                               {subjects.map((s) => (
                                 <SelectItem key={s.id} value={String(s.id)}>
                                   {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Chapter Field */}
+                  <FormField
+                    control={form.control}
+                    name="chapter"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col space-y-1">
+                        <span className="text-sm font-medium text-muted-foreground mb-1.5">
+                          Chapter {form.watch('fileFormat') === 'marker' ? '*' : '(Optional)'}
+                        </span>
+                        <div className="space-y-1">
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={loadingOptions.chapters || !form.getValues('subject')}
+                          >
+                            <SelectTrigger
+                              className="w-full h-10"
+                              showClear={!!field.value}
+                              onClear={() => {
+                                field.onChange('')
+                              }}
+                            >
+                              <SelectValue
+                                placeholder={
+                                  loadingOptions.chapters
+                                    ? 'Loading...'
+                                    : !form.getValues('subject')
+                                      ? 'Select subject first'
+                                      : chapters.length === 0
+                                        ? 'No chapters available'
+                                        : 'Select chapter'
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {chapters.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                  {c.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>

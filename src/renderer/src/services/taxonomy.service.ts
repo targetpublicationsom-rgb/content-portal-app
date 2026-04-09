@@ -76,6 +76,23 @@ export const fetchSubjects = async (standardId: string): Promise<TaxonomyOption[
 
 
 /**
+ * Fetch chapters based on subject
+ * Requires subject ID to be provided
+ */
+export const fetchChapters = async (subjectId: string): Promise<TaxonomyOption[]> => {
+  if (!subjectId) {
+    return []
+  }
+
+  const { data } = await api.get<TaxonomyResponse>('/chapters', {
+    params: {
+      subject_id: subjectId
+    }
+  })
+  return data.data || []
+}
+
+/**
  * Fetch editions based on standard
  * Requires standard ID to be provided
  */
