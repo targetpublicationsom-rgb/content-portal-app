@@ -847,7 +847,10 @@ export default function UploaderJobs(): React.JSX.Element {
                                                                         onClick={() => handleUploadToJob(job.job_id)}
                                                                         className="flex items-center gap-2"
                                                                         disabled={
-                                                                            job.upload_state !== 'READY' || uploadingJobs.has(job.job_id)
+                                                                            (job.mode === 'marker'
+                                                                                ? !(job.state === 'DONE' && job.gate_passed) || job.upload_state === 'UPLOADED'
+                                                                                : job.upload_state !== 'READY') ||
+                                                                            uploadingJobs.has(job.job_id)
                                                                         }
                                                                     >
                                                                         {uploadingJobs.has(job.job_id) ? (
@@ -861,13 +864,19 @@ export default function UploaderJobs(): React.JSX.Element {
                                                                     <p>
                                                                         {uploadingJobs.has(job.job_id)
                                                                             ? 'Uploading files...'
-                                                                            : job.upload_state !== 'READY'
-                                                                                ? job.upload_state === 'BLOCKED'
-                                                                                    ? 'Upload is blocked for this job'
-                                                                                    : job.upload_state === 'UPLOADED'
-                                                                                        ? 'Files have already been uploaded'
-                                                                                        : 'Upload not available'
-                                                                                : 'Upload files to job'}
+                                                                            : job.mode === 'marker'
+                                                                                ? job.upload_state === 'UPLOADED'
+                                                                                    ? 'Files have already been uploaded'
+                                                                                    : !(job.state === 'DONE' && job.gate_passed)
+                                                                                        ? 'Job must be done and validated before uploading'
+                                                                                        : 'Upload files to job'
+                                                                                : job.upload_state !== 'READY'
+                                                                                    ? job.upload_state === 'BLOCKED'
+                                                                                        ? 'Upload is blocked for this job'
+                                                                                        : job.upload_state === 'UPLOADED'
+                                                                                            ? 'Files have already been uploaded'
+                                                                                            : 'Upload not available'
+                                                                                    : 'Upload files to job'}
                                                                     </p>
                                                                 </TooltipContent>
                                                             </Tooltip>
