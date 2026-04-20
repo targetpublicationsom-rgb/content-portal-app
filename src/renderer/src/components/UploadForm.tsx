@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Form, FormField, FormItem, FormMessage } from './ui/form'
 import { Input } from './ui/input'
 import { Badge } from './ui/badge'
-import { Upload, X } from 'lucide-react'
+import { Upload, X, Check, ChevronDown, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useTaxonomyData } from '../hooks'
 import { createJob } from '../services'
+import { cn } from '../lib/utils'
 
 const formSchema = z
   .object({
@@ -105,6 +106,193 @@ interface UploadFormProps {
   open: boolean
   onClose: () => void
   onSuccess?: (jobId: string) => void
+}
+
+// Searchable Edition Combobox Component
+const EditionCombobox = ({
+  value,
+  onChange,
+  options,
+  disabled,
+  showClear,
+  onClear
+}: {
+  value: string
+  onChange: (val: string) => void
+  options: { id: string; name: string }[]
+  disabled?: boolean
+  showClear?: boolean
+  onClear?: () => void
+}): React.JSX.Element => {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const filtered = options.filter((opt) =>
+    opt.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const selectedLabel = options.find((o) => String(o.id) === value)?.name
+
+  // Reset highlighted index when filtered list changes
+  useEffect(() => {
+    setHighlightedIndex(-1)
+  }, [search])
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex < 0 || !listRef.current) return
+    const item = listRef.current.querySelectorAll<HTMLButtonElement>('[data-option]')[highlightedIndex]
+    item?.scrollIntoView({ block: 'nearest' })
+  }, [highlightedIndex])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+        setHighlightedIndex(-1)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 0)
+    }
+  }, [open])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : 0))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filtered.length - 1))
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          onChange(String(filtered[highlightedIndex].id))
+          setOpen(false)
+          setSearch('')
+          setHighlightedIndex(-1)
+        }
+        break
+      case 'Escape':
+        setOpen(false)
+        setSearch('')
+        setHighlightedIndex(-1)
+        break
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      {/* Trigger */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') && !open) {
+            e.preventDefault()
+            setOpen(true)
+          }
+        }}
+        className="border-input flex w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none h-10 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+      >
+        <span className={cn('truncate', !selectedLabel && 'text-muted-foreground')}>
+          {selectedLabel ?? 'Select edition'}
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {showClear && value && (
+            <span
+              role="button"
+              aria-label="Clear selection"
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                onClear?.()
+              }}
+              className="rounded-full p-1 hover:bg-muted/10"
+            >
+              <X className="size-4 opacity-70" />
+            </span>
+          )}
+          <ChevronDown className="size-4 opacity-50" />
+        </div>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-popover text-popover-foreground rounded-md border shadow-md overflow-hidden">
+          {/* Search input */}
+          <div className="flex items-center border-b px-2">
+            <Search className="size-3.5 shrink-0 opacity-50 mr-2" />
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Search editions..."
+              className="flex-1 py-2 text-sm outline-none bg-transparent placeholder:text-muted-foreground"
+            />
+          </div>
+          {/* Options list */}
+          <div ref={listRef} className="max-h-56 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No editions found
+              </div>
+            ) : (
+              filtered.map((opt, idx) => {
+                const isSelected = String(opt.id) === value
+                const isHighlighted = idx === highlightedIndex
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    data-option
+                    className={cn(
+                      'relative flex w-full cursor-default items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none select-none text-left',
+                      isHighlighted
+                        ? 'bg-accent text-accent-foreground'
+                        : isSelected
+                          ? 'bg-accent/50'
+                          : 'hover:bg-accent hover:text-accent-foreground'
+                    )}
+                    onMouseEnter={() => setHighlightedIndex(idx)}
+                    onClick={() => {
+                      onChange(String(opt.id))
+                      setOpen(false)
+                      setSearch('')
+                      setHighlightedIndex(-1)
+                    }}
+                  >
+                    {isSelected && (
+                      <span className="absolute right-2 flex size-3.5 items-center justify-center">
+                        <Check className="size-4" />
+                      </span>
+                    )}
+                    {opt.name}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Tags Input Component
@@ -719,24 +907,13 @@ export default function UploadForm({
                           Edition (Optional)
                         </span>
                         <div className="space-y-1">
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger
-                              className="w-full h-10"
-                              showClear={!!field.value}
-                              onClear={() => {
-                                field.onChange('')
-                              }}
-                            >
-                              <SelectValue placeholder="Select edition" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {editions.map((edition) => (
-                                <SelectItem key={edition.id} value={String(edition.id)}>
-                                  {edition.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <EditionCombobox
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            options={editions}
+                            showClear={!!field.value}
+                            onClear={() => field.onChange('')}
+                          />
                           <FormMessage />
                         </div>
                       </FormItem>
