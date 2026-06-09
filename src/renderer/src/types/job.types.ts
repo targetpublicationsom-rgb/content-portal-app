@@ -22,6 +22,7 @@ export interface Job {
   upload_receipt_url: string | null
   question_path: string | null
   answer_path: string | null
+  tags: string | null
   counts: JobCounts
 }
 

@@ -673,6 +673,7 @@ export default function UploaderJobs(): React.JSX.Element {
                                         <TableHead>Job ID</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Format</TableHead>
+                                        <TableHead>Tags</TableHead>
                                         <TableHead>Validation Status</TableHead>
                                         <TableHead>Created</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
@@ -735,6 +736,23 @@ export default function UploaderJobs(): React.JSX.Element {
                                                     >
                                                         {job.mode?.replace('-', ' ')}
                                                     </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {job.tags ? (
+                                                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                                            {job.tags.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+                                                                <Badge
+                                                                    key={tag}
+                                                                    variant="secondary"
+                                                                    className="text-xs px-1.5 py-0"
+                                                                >
+                                                                    {tag}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     {(() => {
