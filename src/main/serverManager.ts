@@ -29,8 +29,9 @@ async function extractServerExecutable(): Promise<string> {
   const versionFile = path.join(toolsDir, 'version.txt')
   const currentVersion = app.getVersion()
 
-  // Check if already extracted and version matches
-  if (fs.existsSync(targetExePath) && fs.existsSync(versionFile)) {
+  // In dev mode, always re-extract so updated tools/ binaries are picked up immediately.
+  // In production, skip extraction when the version matches.
+  if (!is.dev && fs.existsSync(targetExePath) && fs.existsSync(versionFile)) {
     try {
       const extractedVersion = fs.readFileSync(versionFile, 'utf-8').trim()
       if (extractedVersion === currentVersion) {

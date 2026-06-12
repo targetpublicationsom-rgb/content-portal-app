@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const apiBase = import.meta.env.VITE_API_BASE || 'https://staging.targetcontent.in/api/v1'
+const apiBase = import.meta.env.VITE_API_BASE || 'https://content-service.targetcontent.in/api/v1'
 
 export const api = axios.create({
   baseURL: apiBase,

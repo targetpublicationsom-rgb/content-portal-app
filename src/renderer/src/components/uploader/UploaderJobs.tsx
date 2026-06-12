@@ -445,6 +445,7 @@ export default function UploaderJobs(): React.JSX.Element {
                                             <SelectItem value="all">All Formats</SelectItem>
                                             <SelectItem value="single">Single File</SelectItem>
                                             <SelectItem value="two-file">Two Files</SelectItem>
+                                            <SelectItem value="marker">Marker</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -672,6 +673,7 @@ export default function UploaderJobs(): React.JSX.Element {
                                         <TableHead>Job ID</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Format</TableHead>
+                                        <TableHead>Tags</TableHead>
                                         <TableHead>Validation Status</TableHead>
                                         <TableHead>Created</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
@@ -734,6 +736,23 @@ export default function UploaderJobs(): React.JSX.Element {
                                                     >
                                                         {job.mode?.replace('-', ' ')}
                                                     </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {job.tags ? (
+                                                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                                            {job.tags.split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+                                                                <Badge
+                                                                    key={tag}
+                                                                    variant="secondary"
+                                                                    className="text-xs px-1.5 py-0"
+                                                                >
+                                                                    {tag}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">—</span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     {(() => {
@@ -846,7 +865,10 @@ export default function UploaderJobs(): React.JSX.Element {
                                                                         onClick={() => handleUploadToJob(job.job_id)}
                                                                         className="flex items-center gap-2"
                                                                         disabled={
-                                                                            job.upload_state !== 'READY' || uploadingJobs.has(job.job_id)
+                                                                            (job.mode === 'marker'
+                                                                                ? !(job.state === 'DONE' && job.gate_passed) || job.upload_state === 'UPLOADED'
+                                                                                : job.upload_state !== 'READY') ||
+                                                                            uploadingJobs.has(job.job_id)
                                                                         }
                                                                     >
                                                                         {uploadingJobs.has(job.job_id) ? (
@@ -860,13 +882,19 @@ export default function UploaderJobs(): React.JSX.Element {
                                                                     <p>
                                                                         {uploadingJobs.has(job.job_id)
                                                                             ? 'Uploading files...'
-                                                                            : job.upload_state !== 'READY'
-                                                                                ? job.upload_state === 'BLOCKED'
-                                                                                    ? 'Upload is blocked for this job'
-                                                                                    : job.upload_state === 'UPLOADED'
-                                                                                        ? 'Files have already been uploaded'
-                                                                                        : 'Upload not available'
-                                                                                : 'Upload files to job'}
+                                                                            : job.mode === 'marker'
+                                                                                ? job.upload_state === 'UPLOADED'
+                                                                                    ? 'Files have already been uploaded'
+                                                                                    : !(job.state === 'DONE' && job.gate_passed)
+                                                                                        ? 'Job must be done and validated before uploading'
+                                                                                        : 'Upload files to job'
+                                                                                : job.upload_state !== 'READY'
+                                                                                    ? job.upload_state === 'BLOCKED'
+                                                                                        ? 'Upload is blocked for this job'
+                                                                                        : job.upload_state === 'UPLOADED'
+                                                                                            ? 'Files have already been uploaded'
+                                                                                            : 'Upload not available'
+                                                                                    : 'Upload files to job'}
                                                                     </p>
                                                                 </TooltipContent>
                                                             </Tooltip>

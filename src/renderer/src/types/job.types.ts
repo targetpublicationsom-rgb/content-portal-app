@@ -6,7 +6,7 @@ export interface JobCounts {
 
 export interface Job {
   job_id: string
-  mode: 'single' | 'two-file'
+  mode: 'single' | 'two-file' | 'marker'
   state: 'DONE' | 'FAILED' | 'RUNNING'
   gate_passed: boolean
   created_at: string
@@ -22,6 +22,7 @@ export interface Job {
   upload_receipt_url: string | null
   question_path: string | null
   answer_path: string | null
+  tags: string | null
   counts: JobCounts
 }
 
@@ -44,7 +45,7 @@ export interface Stage {
 
 export interface JobDetails {
   job_id: string
-  format: 'single' | 'two-file'
+  format: 'single' | 'two-file' | 'marker'
   state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   gate_passed: boolean
   gate_report_url: string
@@ -63,7 +64,7 @@ export interface JobDetails {
 
 export interface JobStatus {
   job_id: string
-  format: 'single' | 'two-file'
+  format: 'single' | 'two-file' | 'marker'
   state: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED'
   gate_passed?: boolean
   gate_report_url?: string

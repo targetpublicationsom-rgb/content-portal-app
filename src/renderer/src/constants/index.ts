@@ -10,7 +10,8 @@ export const JOB_STATES = {
 // Job modes / file formats
 export const FILE_FORMATS = {
   SINGLE: 'single',
-  TWO_FILE: 'two-file'
+  TWO_FILE: 'two-file',
+  MARKER: 'marker'
 } as const
 
 // Upload states
